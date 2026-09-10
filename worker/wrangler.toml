@@ -1,0 +1,7 @@
+name = "utility-calc-api"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "ROOMS"
+id = "108c2022f06648ee88e87948988654ed"

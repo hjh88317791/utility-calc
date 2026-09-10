@@ -1,0 +1,2190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水电费分摊计算器</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 650px;
+            margin: 30px auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 25px;
+            font-weight: 600;
+            font-size: 24px;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 22px;
+            background: #f0f2f5;
+            padding: 6px;
+            border-radius: 10px;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 12px 6px;
+            border: none;
+            background: transparent;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            color: #7f8c8d;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tab:hover:not(.active) {
+            color: #2c3e50;
+        }
+
+        .tab.active {
+            background: #fff;
+            color: #3498db;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+        }
+
+        .tab[data-tab="water"].active {
+            color: #16a085;
+        }
+
+        .tab[data-tab="history"].active {
+            color: #8e44ad;
+        }
+
+        .tab[data-tab="admin"].active {
+            color: #e67e22;
+        }
+
+        .panel {
+            display: none;
+        }
+
+        .panel.active {
+            display: block;
+        }
+
+        /* 卡片 */
+        .card {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card h2 {
+            color: #3498db;
+            margin-bottom: 15px;
+            font-size: 18px;
+            border-bottom: 1px solid #e0e0e0;
+            padding-bottom: 8px;
+        }
+
+        #water-panel .card h2 {
+            color: #16a085;
+        }
+
+        #admin-panel .card h2 {
+            color: #e67e22;
+        }
+
+        .settings-card {
+            background: linear-gradient(135deg, #eef4fb 0%, #eafaf6 100%);
+            border: 1px solid #e1e8ef;
+        }
+
+        .settings-card h2 {
+            color: #546e7a;
+        }
+
+        .settings-section-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #90a4ae;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+        }
+
+        .settings-section+.settings-section {
+            margin-top: 18px;
+            padding-top: 18px;
+            border-top: 1px dashed #d5dee6;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .input-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .input-group {
+            flex: 1;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #2c3e50;
+            font-size: 14px;
+        }
+
+        input[type="number"],
+        input[type="text"],
+        input[type="date"],
+        input[type="password"] {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: border 0.3s;
+            background: #fff;
+        }
+
+        input:focus {
+            border-color: #3498db;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+        }
+
+        #water-panel input[type="number"]:focus {
+            border-color: #16a085;
+            box-shadow: 0 0 0 2px rgba(22, 160, 133, 0.2);
+        }
+
+        .usage-display {
+            background-color: #e8f4fc;
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-weight: 500;
+            color: #2980b9;
+            text-align: center;
+            margin-top: 10px;
+            font-size: 15px;
+        }
+
+        #water-panel .usage-display {
+            background-color: #e0f2ef;
+            color: #16a085;
+        }
+
+        /* 费用项 */
+        .fee-item {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .fee-op {
+            width: 64px;
+            flex-shrink: 0;
+            padding: 12px 6px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 18px;
+            font-weight: 600;
+            text-align: center;
+            background: #fff;
+            color: #2c3e50;
+            cursor: pointer;
+            appearance: none;
+            -webkit-appearance: none;
+            padding-right: 20px;
+        }
+
+        .fee-op:focus {
+            border-color: #3498db;
+            outline: none;
+        }
+
+        .fee-amount {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .remove-fee {
+            width: 42px;
+            height: 44px;
+            flex-shrink: 0;
+            padding: 0;
+            border: none;
+            border-radius: 6px;
+            background: #fdecea;
+            color: #e74c3c;
+            font-size: 20px;
+            cursor: pointer;
+        }
+
+        .remove-fee:hover {
+            background: #f8d7da;
+        }
+
+        #addFee {
+            width: 100%;
+            padding: 10px;
+            margin-top: 5px;
+            border: 1px dashed #bdc3c7;
+            border-radius: 6px;
+            background: #fff;
+            color: #2c3e50;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        #addFee:hover {
+            background: #ecf0f1;
+        }
+
+        .total-bill-display {
+            margin-top: 15px;
+            padding: 12px 15px;
+            background: #e8f4fc;
+            border-radius: 6px;
+            font-weight: 600;
+            color: #2980b9;
+            text-align: center;
+            font-size: 17px;
+        }
+
+        .total-bill-display.negative {
+            background: #fdecea;
+            color: #e74c3c;
+        }
+
+        /* 按钮 */
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 25px;
+            flex-wrap: wrap;
+        }
+
+        .button-group button {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        #calculate {
+            background-color: #3498db;
+            color: white;
+        }
+
+        #calculate:hover {
+            background-color: #2980b9;
+        }
+
+        #reset {
+            background-color: #e74c3c;
+            color: white;
+        }
+
+        #reset:hover {
+            background-color: #c0392b;
+        }
+
+        #waterCalculate {
+            background-color: #16a085;
+            color: white;
+        }
+
+        #waterCalculate:hover {
+            background-color: #12876f;
+        }
+
+        #waterReset {
+            background-color: #e74c3c;
+            color: white;
+        }
+
+        #waterReset:hover {
+            background-color: #c0392b;
+        }
+
+        .save-btn {
+            background-color: #27ae60;
+            color: white;
+        }
+
+        .save-btn:hover {
+            background-color: #229954;
+        }
+
+        .save-btn:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+
+        /* 结果 */
+        .result {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .result h2 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+
+        .period-display {
+            display: inline-block;
+            background: #e8f4fc;
+            color: #2980b9;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        #water-result .period-display {
+            background: #e0f2ef;
+            color: #16a085;
+        }
+
+        .result-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .result-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .result-label {
+            font-weight: 500;
+            color: #2c3e50;
+        }
+
+        .result-value {
+            font-weight: 600;
+            color: #27ae60;
+        }
+
+        #water-result .result-value {
+            color: #16a085;
+        }
+
+        .water-group {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px dashed #e0e0e0;
+        }
+
+        .water-group:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+
+        .water-group-title {
+            font-weight: 600;
+            color: #16a085;
+            margin-bottom: 8px;
+            font-size: 15px;
+        }
+
+        .water-group .result-item {
+            border-bottom: none;
+            padding-bottom: 4px;
+            margin-bottom: 4px;
+        }
+
+        /* 错误提示 */
+        .error {
+            color: #e74c3c;
+            font-size: 14px;
+            margin-top: 8px;
+            display: none;
+        }
+
+        /* 房间卡片 */
+        .room-status {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #7f8c8d;
+            min-height: 20px;
+        }
+
+        .room-status.ok {
+            color: #27ae60;
+        }
+
+        .room-status.err {
+            color: #e74c3c;
+        }
+
+        .room-status.warn {
+            color: #e67e22;
+        }
+
+        .room-active {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 18px;
+            background: #d4f5e4;
+            border-radius: 8px;
+            border-left: 4px solid #27ae60;
+        }
+
+        .room-active-info {
+            font-weight: 600;
+            color: #1e7a4c;
+        }
+
+        .room-active-info span {
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+        }
+
+        #leaveRoom {
+            padding: 8px 16px;
+            border: 1px solid #e74c3c;
+            border-radius: 6px;
+            background: #fff;
+            color: #e74c3c;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        #leaveRoom:hover {
+            background: #e74c3c;
+            color: #fff;
+        }
+
+        /* 通用按钮样式 */
+        .primary-btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            background: #3498db;
+            color: #fff;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .primary-btn:hover {
+            background: #2980b9;
+        }
+
+        .danger-btn {
+            padding: 6px 12px;
+            border: 1px solid #e74c3c;
+            border-radius: 4px;
+            background: #fff;
+            color: #e74c3c;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .danger-btn:hover {
+            background: #e74c3c;
+            color: #fff;
+        }
+
+        .ghost-btn {
+            padding: 6px 12px;
+            border: 1px solid #3498db;
+            border-radius: 4px;
+            background: #fff;
+            color: #3498db;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .ghost-btn:hover {
+            background: #3498db;
+            color: #fff;
+        }
+
+        /* 历史记录 */
+        .history-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .clear-btn {
+            padding: 6px 14px;
+            border: 1px solid #f5c6cb;
+            border-radius: 6px;
+            background: #fff;
+            color: #e74c3c;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .clear-btn:hover {
+            background: #fdecea;
+        }
+
+        .empty-tip {
+            text-align: center;
+            color: #95a5a6;
+            padding: 30px 0;
+            font-size: 14px;
+        }
+
+        .history-item {
+            position: relative;
+            padding: 14px 16px;
+            margin-bottom: 12px;
+            background: #fff;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .history-item.type-water {
+            border-left-color: #16a085;
+        }
+
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .history-type {
+            font-size: 13px;
+            font-weight: 600;
+            color: #3498db;
+        }
+
+        .history-item.type-water .history-type {
+            color: #16a085;
+        }
+
+        .history-time {
+            font-size: 12px;
+            color: #95a5a6;
+        }
+
+        .history-period {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-bottom: 10px;
+        }
+
+        .history-body {
+            font-size: 14px;
+            color: #2c3e50;
+            line-height: 1.8;
+            padding-bottom: 10px;
+            border-bottom: 1px dashed #ecf0f1;
+            margin-bottom: 10px;
+        }
+
+        .history-body .hb-name {
+            color: #7f8c8d;
+            margin-right: 6px;
+        }
+
+        .history-body .hb-amount {
+            font-weight: 600;
+            color: #27ae60;
+        }
+
+        .history-item.type-water .hb-amount {
+            color: #16a085;
+        }
+
+        .history-body .hb-usage {
+            color: #95a5a6;
+            font-size: 12px;
+            margin-left: 6px;
+        }
+
+        .history-body .hb-extra {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-top: 4px;
+        }
+
+        .history-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        .history-actions button {
+            padding: 6px 14px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: #fff;
+            color: #555;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .history-actions button:hover {
+            background: #f0f2f5;
+        }
+
+        .history-actions button[data-action="delete"]:hover {
+            background: #fdecea;
+            border-color: #f5c6cb;
+            color: #e74c3c;
+        }
+
+        /* 保存进度条 */
+        .save-progress {
+            margin-top: 15px;
+            padding: 12px 16px;
+            border-radius: 6px;
+            font-weight: 500;
+            text-align: center;
+            display: none;
+        }
+
+        .save-progress.saving {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .save-progress.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .save-progress.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        /* 管理面板 */
+        .admin-room-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 14px;
+            background: #fff;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            border: 1px solid #eee;
+        }
+
+        .admin-room-info {
+            flex: 1;
+        }
+
+        .admin-room-code {
+            font-family: 'Courier New', monospace;
+            font-weight: 700;
+            color: #e67e22;
+            font-size: 16px;
+        }
+
+        .admin-room-note {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-top: 2px;
+        }
+
+        .admin-room-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 20px;
+            }
+
+            .input-row {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            .button-group button {
+                width: 100%;
+            }
+
+            .tab {
+                font-size: 13px;
+                padding: 10px 4px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>水电费分摊计算器</h1>
+
+        <!-- Tab 切换 -->
+        <div class="tabs">
+            <button class="tab active" data-tab="electricity">⚡ 电费</button>
+            <button class="tab" data-tab="water">💧 水费</button>
+            <button class="tab" data-tab="history">📋 历史</button>
+            <button class="tab" data-tab="admin">🔧 管理</button>
+        </div>
+
+        <!-- 共享房间 -->
+        <div class="card settings-card" id="roomCard">
+            <h2>🔗 共享房间</h2>
+
+            <!-- 未进入房间 -->
+            <div id="roomEntry">
+                <div class="input-row">
+                    <div class="input-group" style="flex: 2;">
+                        <label for="roomCode">房间码（向管理员索取）</label>
+                        <input type="text" id="roomCode" placeholder="例如 WANGJI2026" maxlength="16">
+                    </div>
+                    <div class="input-group" style="flex: 1; display: flex; align-items: flex-end;">
+                        <button type="button" id="joinRoom" class="primary-btn">进入</button>
+                    </div>
+                </div>
+                <div class="room-status" id="syncStatus">未进入共享房间</div>
+            </div>
+
+            <!-- 已进入房间 -->
+            <div id="roomActive" style="display: none;">
+                <div class="room-active">
+                    <div class="room-active-info">
+                        ✅ 已进入房间：<span id="currentRoomDisplay"></span>
+                    </div>
+                    <button type="button" id="leaveRoom">退出</button>
+                </div>
+                <div class="room-status" id="syncStatusActive">等待同步...</div>
+            </div>
+        </div>
+
+        <!-- 基础设置 -->
+        <div class="card settings-card">
+            <h2>⚙️ 基础设置</h2>
+
+            <div class="settings-section">
+                <div class="settings-section-title">住户昵称</div>
+                <div class="input-row">
+                    <div class="input-group">
+                        <label for="nicknameA">住户A昵称</label>
+                        <input type="text" id="nicknameA" placeholder="住户A" maxlength="12">
+                    </div>
+                    <div class="input-group">
+                        <label for="nicknameB">住户B昵称</label>
+                        <input type="text" id="nicknameB" placeholder="住户B" maxlength="12">
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">计费周期</div>
+                <div class="input-row">
+                    <div class="input-group">
+                        <label for="periodStart">开始日期</label>
+                        <input type="date" id="periodStart">
+                    </div>
+                    <div class="input-group">
+                        <label for="periodEnd">结束日期</label>
+                        <input type="date" id="periodEnd">
+                    </div>
+                </div>
+                <div class="error" id="errorPeriod">结束日期不能早于开始日期</div>
+            </div>
+        </div>
+
+        <!-- ==================== 电费面板 ==================== -->
+        <div id="electricity-panel" class="panel active">
+            <div class="card">
+                <h2><span class="name-a">住户A</span>用电信息</h2>
+                <div class="input-row">
+                    <div class="input-group">
+                        <label for="lastReadingA">上次抄表数 (kWh)</label>
+                        <input type="number" id="lastReadingA" min="0" step="0.01" placeholder="上次电表读数">
+                        <div class="error" id="errorLastA">请输入有效的上次抄表数</div>
+                    </div>
+                    <div class="input-group">
+                        <label for="currentReadingA">本次抄表数 (kWh)</label>
+                        <input type="number" id="currentReadingA" min="0" step="0.01" placeholder="本次电表读数">
+                        <div class="error" id="errorCurrentA">请输入有效的本次抄表数</div>
+                    </div>
+                </div>
+                <div class="usage-display" id="usageA">用电量: 0.00 kWh</div>
+            </div>
+
+            <div class="card">
+                <h2><span class="name-b">住户B</span>用电信息</h2>
+                <div class="input-row">
+                    <div class="input-group">
+                        <label for="lastReadingB">上次抄表数 (kWh)</label>
+                        <input type="number" id="lastReadingB" min="0" step="0.01" placeholder="上次电表读数">
+                        <div class="error" id="errorLastB">请输入有效的上次抄表数</div>
+                    </div>
+                    <div class="input-group">
+                        <label for="currentReadingB">本次抄表数 (kWh)</label>
+                        <input type="number" id="currentReadingB" min="0" step="0.01" placeholder="本次电表读数">
+                        <div class="error" id="errorCurrentB">请输入有效的本次抄表数</div>
+                    </div>
+                </div>
+                <div class="usage-display" id="usageB">用电量: 0.00 kWh</div>
+            </div>
+
+            <div class="card">
+                <h2>总电费信息（支持加减）</h2>
+                <div id="feeList"></div>
+                <button type="button" id="addFee">＋ 添加费用项</button>
+                <div class="total-bill-display" id="totalBillDisplay">总电费: 0.00 元</div>
+                <div class="error" id="errorTotal">总电费必须大于 0，请检查各项金额与运算符号</div>
+            </div>
+
+            <div class="button-group">
+                <button id="calculate">计算分摊</button>
+                <button id="reset">重置</button>
+            </div>
+
+            <div class="result" id="result">
+                <h2>计算结果</h2>
+                <div class="period-display" id="electricityPeriodDisplay" style="display:none;"></div>
+                <div class="result-item">
+                    <span class="result-label"><span class="name-a">住户A</span>电费：</span>
+                    <span class="result-value" id="billA">0.00 元</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label"><span class="name-b">住户B</span>电费：</span>
+                    <span class="result-value" id="billB">0.00 元</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">总电费：</span>
+                    <span class="result-value" id="totalBillResult">0.00 元</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">总用电量：</span>
+                    <span class="result-value" id="totalUsage">0.00 kWh</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label"><span class="name-a">住户A</span>用电比例：</span>
+                    <span class="result-value" id="ratioA">0%</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label"><span class="name-b">住户B</span>用电比例：</span>
+                    <span class="result-value" id="ratioB">0%</span>
+                </div>
+
+                <div class="button-group">
+                    <button type="button" class="save-btn" id="saveElectricity">💾 保存本次记录</button>
+                </div>
+                <div class="save-progress" id="electricitySaveProgress"></div>
+            </div>
+        </div>
+
+        <!-- ==================== 水费面板 ==================== -->
+        <div id="water-panel" class="panel">
+            <div class="card">
+                <h2><span class="name-a">住户A</span>用水信息</h2>
+                <div class="input-row">
+                    <div class="input-group">
+                        <label for="waterLastA">上次水表读数 (吨)</label>
+                        <input type="number" id="waterLastA" min="0" step="0.01" placeholder="上次水表读数">
+                        <div class="error" id="waterErrorLastA">请输入有效的上次读数</div>
+                    </div>
+                    <div class="input-group">
+                        <label for="waterCurrentA">本次水表读数 (吨)</label>
+                        <input type="number" id="waterCurrentA" min="0" step="0.01" placeholder="本次水表读数">
+                        <div class="error" id="waterErrorCurrentA">请输入有效的本次读数</div>
+                    </div>
+                </div>
+                <div class="usage-display" id="waterUsageADisplay">用水量: 0.00 吨</div>
+            </div>
+
+            <div class="card">
+                <h2><span class="name-b">住户B</span>用水信息</h2>
+                <div class="input-row">
+                    <div class="input-group">
+                        <label for="waterLastB">上次水表读数 (吨)</label>
+                        <input type="number" id="waterLastB" min="0" step="0.01" placeholder="上次水表读数">
+                        <div class="error" id="waterErrorLastB">请输入有效的上次读数</div>
+                    </div>
+                    <div class="input-group">
+                        <label for="waterCurrentB">本次水表读数 (吨)</label>
+                        <input type="number" id="waterCurrentB" min="0" step="0.01" placeholder="本次水表读数">
+                        <div class="error" id="waterErrorCurrentB">请输入有效的本次读数</div>
+                    </div>
+                </div>
+                <div class="usage-display" id="waterUsageBDisplay">用水量: 0.00 吨</div>
+            </div>
+
+            <div class="card">
+                <h2>水价设置</h2>
+                <div class="input-group">
+                    <label for="waterPrice">每吨单价 (元/吨)</label>
+                    <input type="number" id="waterPrice" min="0" step="0.01" placeholder="例如 3.50">
+                    <div class="error" id="waterErrorPrice">请输入有效的单价（大于 0）</div>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button id="waterCalculate">计算水费</button>
+                <button id="waterReset">重置</button>
+            </div>
+
+            <div class="result" id="water-result">
+                <h2>水费计算结果</h2>
+                <div class="period-display" id="waterPeriodDisplay" style="display:none;"></div>
+
+                <div class="water-group">
+                    <div class="water-group-title"><span class="name-a">住户A</span></div>
+                    <div class="result-item">
+                        <span class="result-label">用水量：</span>
+                        <span class="result-value" id="waterUsageAResult">0.00 吨</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-label">应缴水费：</span>
+                        <span class="result-value" id="waterBillA">0.00 元</span>
+                    </div>
+                </div>
+
+                <div class="water-group">
+                    <div class="water-group-title"><span class="name-b">住户B</span></div>
+                    <div class="result-item">
+                        <span class="result-label">用水量：</span>
+                        <span class="result-value" id="waterUsageBResult">0.00 吨</span>
+                    </div>
+                    <div class="result-item">
+                        <span class="result-label">应缴水费：</span>
+                        <span class="result-value" id="waterBillB">0.00 元</span>
+                    </div>
+                </div>
+
+                <div class="button-group">
+                    <button type="button" class="save-btn" id="saveWater">💾 保存本次记录</button>
+                </div>
+                <div class="save-progress" id="waterSaveProgress"></div>
+            </div>
+        </div>
+
+        <!-- ==================== 历史面板 ==================== -->
+        <div id="history-panel" class="panel">
+            <div class="card">
+                <div class="history-toolbar">
+                    <h2 style="margin:0; border:none; padding:0;">📋 历史记录</h2>
+                    <button type="button" id="clearHistoryBtn" class="clear-btn">清空全部</button>
+                </div>
+                <div id="historyList">
+                    <div class="empty-tip">暂无历史记录</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== 管理面板 ==================== -->
+        <div id="admin-panel" class="panel">
+            <!-- 登录 -->
+            <div class="card" id="adminLoginCard">
+                <h2>🔧 管理员登录</h2>
+                <div class="input-group" style="margin-bottom: 15px;">
+                    <label for="adminPassword">管理员密码</label>
+                    <input type="password" id="adminPassword" placeholder="输入管理员密码">
+                </div>
+                <button type="button" id="adminLoginBtn" class="primary-btn">登录</button>
+                <div class="room-status" id="adminLoginStatus"></div>
+            </div>
+
+            <!-- 已登录 -->
+            <div id="adminPanelContent" style="display: none;">
+                <div class="card">
+                    <div class="history-toolbar">
+                        <h2 style="margin:0; border:none; padding:0;">房间管理</h2>
+                        <button type="button" id="adminLogoutBtn" class="clear-btn">退出登录</button>
+                    </div>
+
+                    <div class="settings-section-title">创建房间</div>
+                    <div class="input-row">
+                        <div class="input-group" style="flex: 2;">
+                            <input type="text" id="newRoomCode" placeholder="房间码（4~16位字母数字）" maxlength="16">
+                        </div>
+                        <div class="input-group" style="flex: 3;">
+                            <input type="text" id="newRoomNote" placeholder="备注（如：3栋301）" maxlength="40">
+                        </div>
+                    </div>
+                    <button type="button" id="createRoomBtn" class="primary-btn">＋ 创建房间</button>
+                    <div class="room-status" id="adminCreateStatus"></div>
+                </div>
+
+                <div class="card">
+                    <div class="settings-section-title">已创建的房间</div>
+                    <div id="adminRoomList">
+                        <div class="empty-tip">暂无房间</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+
+            /* ============================================================
+               常量与全局状态
+               ============================================================ */
+            const API_BASE = 'https://utility-calc-api.jasonchrishan0211.workers.dev';
+            const SYNC_INTERVAL = 5000;
+
+            let currentRoom = '';
+            let adminToken = localStorage.getItem('admin_token') || '';
+            let lastRemoteTs = 0;
+            let pollTimer = null;
+
+            let pendingElectricityResult = null;  // 电费计算结果暂存，等待用户点保存
+            let pendingWaterResult = null;
+
+            let localHistory = [];
+
+            /* ============================================================
+               Tab 切换
+               ============================================================ */
+            const tabs = document.querySelectorAll('.tab');
+            const panels = {
+                electricity: document.getElementById('electricity-panel'),
+                water: document.getElementById('water-panel'),
+                history: document.getElementById('history-panel'),
+                admin: document.getElementById('admin-panel')
+            };
+            tabs.forEach(function (tab) {
+                tab.addEventListener('click', function () {
+                    tabs.forEach(function (t) {t.classList.remove('active');});
+                    tab.classList.add('active');
+                    Object.keys(panels).forEach(function (k) {panels[k].classList.remove('active');});
+                    panels[tab.dataset.tab].classList.add('active');
+
+                    if (tab.dataset.tab === 'admin') {
+                        if (adminToken) {
+                            document.getElementById('adminLoginCard').style.display = 'none';
+                            document.getElementById('adminPanelContent').style.display = 'block';
+                            loadAdminRooms();
+                        } else {
+                            document.getElementById('adminLoginCard').style.display = 'block';
+                            document.getElementById('adminPanelContent').style.display = 'none';
+                        }
+                    }
+                });
+            });
+
+            /* ============================================================
+               基础设置 - 昵称
+               ============================================================ */
+            const nicknameAInput = document.getElementById('nicknameA');
+            const nicknameBInput = document.getElementById('nicknameB');
+
+            function updateNames() {
+                const nameA = nicknameAInput.value.trim() || '住户A';
+                const nameB = nicknameBInput.value.trim() || '住户B';
+                document.querySelectorAll('.name-a').forEach(function (el) {el.textContent = nameA;});
+                document.querySelectorAll('.name-b').forEach(function (el) {el.textContent = nameB;});
+            }
+            nicknameAInput.addEventListener('input', updateNames);
+            nicknameBInput.addEventListener('input', updateNames);
+
+            /* ============================================================
+               基础设置 - 计费周期
+               ============================================================ */
+            const periodStart = document.getElementById('periodStart');
+            const periodEnd = document.getElementById('periodEnd');
+            const errorPeriod = document.getElementById('errorPeriod');
+
+            // 结束日期默认今天
+            (function initPeriod() {
+                const today = new Date();
+                const yyyy = today.getFullYear();
+                const mm = String(today.getMonth() + 1).padStart(2, '0');
+                const dd = String(today.getDate()).padStart(2, '0');
+                periodEnd.value = yyyy + '-' + mm + '-' + dd;
+            })();
+
+            function validatePeriod() {
+                const s = periodStart.value, e = periodEnd.value;
+                if (s && e && s > e) {errorPeriod.style.display = 'block'; return false;}
+                errorPeriod.style.display = 'none';
+                return true;
+            }
+            function formatPeriod() {
+                const s = periodStart.value, e = periodEnd.value;
+                if (s && e) return '📅 计费周期：' + s + ' 至 ' + e;
+                if (s) return '📅 计费周期：' + s + ' 起';
+                if (e) return '📅 计费周期：截至 ' + e;
+                return '';
+            }
+            function periodPlainText() {
+                const s = periodStart.value, e = periodEnd.value;
+                if (s && e) return s + ' ~ ' + e;
+                if (s) return s + ' 起';
+                if (e) return '截至 ' + e;
+                return '未设置周期';
+            }
+            periodStart.addEventListener('input', function () {errorPeriod.style.display = 'none';});
+            periodEnd.addEventListener('input', function () {errorPeriod.style.display = 'none';});
+
+            /* ============================================================
+               电费逻辑
+               ============================================================ */
+            const lastReadingA = document.getElementById('lastReadingA');
+            const currentReadingA = document.getElementById('currentReadingA');
+            const lastReadingB = document.getElementById('lastReadingB');
+            const currentReadingB = document.getElementById('currentReadingB');
+            const usageAElement = document.getElementById('usageA');
+            const usageBElement = document.getElementById('usageB');
+            const feeList = document.getElementById('feeList');
+            const addFeeBtn = document.getElementById('addFee');
+            const totalBillDisplay = document.getElementById('totalBillDisplay');
+            const calculateBtn = document.getElementById('calculate');
+            const resetBtn = document.getElementById('reset');
+            const resultDiv = document.getElementById('result');
+            const electricityPeriodDisplay = document.getElementById('electricityPeriodDisplay');
+            const errorLastA = document.getElementById('errorLastA');
+            const errorCurrentA = document.getElementById('errorCurrentA');
+            const errorLastB = document.getElementById('errorLastB');
+            const errorCurrentB = document.getElementById('errorCurrentB');
+            const errorTotal = document.getElementById('errorTotal');
+            const billAElement = document.getElementById('billA');
+            const billBElement = document.getElementById('billB');
+            const totalBillResult = document.getElementById('totalBillResult');
+            const totalUsageElement = document.getElementById('totalUsage');
+            const ratioAElement = document.getElementById('ratioA');
+            const ratioBElement = document.getElementById('ratioB');
+            const saveElectricityBtn = document.getElementById('saveElectricity');
+            const electricitySaveProgress = document.getElementById('electricitySaveProgress');
+
+            function createFeeItem(op, amount) {
+                const div = document.createElement('div');
+                div.className = 'fee-item';
+                div.innerHTML =
+                    '<select class="fee-op">' +
+                    '<option value="+"' + (op === '+' ? ' selected' : '') + '>＋</option>' +
+                    '<option value="-"' + (op === '-' ? ' selected' : '') + '>－</option>' +
+                    '</select>' +
+                    '<input type="number" class="fee-amount" min="0" step="0.01" placeholder="金额 (元)">' +
+                    '<button type="button" class="remove-fee" title="删除">×</button>';
+                const amountInput = div.querySelector('.fee-amount');
+                amountInput.value = amount != null ? amount : '';
+                div.querySelector('.fee-op').addEventListener('change', updateTotalBill);
+                amountInput.addEventListener('input', function () {
+                    errorTotal.style.display = 'none';
+                    updateTotalBill();
+                });
+                div.querySelector('.remove-fee').addEventListener('click', function () {
+                    if (feeList.children.length > 1) div.remove();
+                    else {
+                        div.querySelector('.fee-op').value = '+';
+                        amountInput.value = '';
+                    }
+                    updateTotalBill();
+                });
+                return div;
+            }
+
+            function getTotalBill() {
+                let total = 0;
+                feeList.querySelectorAll('.fee-item').forEach(function (item) {
+                    const sign = item.querySelector('.fee-op').value === '-' ? -1 : 1;
+                    const amount = parseFloat(item.querySelector('.fee-amount').value);
+                    if (!isNaN(amount)) total += sign * amount;
+                });
+                return total;
+            }
+
+            function updateTotalBill() {
+                const total = getTotalBill();
+                totalBillDisplay.textContent = '总电费: ' + total.toFixed(2) + ' 元';
+                totalBillDisplay.classList.toggle('negative', total < 0);
+            }
+
+            addFeeBtn.addEventListener('click', function () {
+                feeList.appendChild(createFeeItem('+', ''));
+                const items = feeList.querySelectorAll('.fee-item');
+                items[items.length - 1].querySelector('.fee-amount').focus();
+            });
+
+            function updateUsageDisplay() {
+                const lastA = parseFloat(lastReadingA.value) || 0;
+                const curA = parseFloat(currentReadingA.value) || 0;
+                usageAElement.textContent = '用电量: ' + Math.max(0, curA - lastA).toFixed(2) + ' kWh';
+                const lastB = parseFloat(lastReadingB.value) || 0;
+                const curB = parseFloat(currentReadingB.value) || 0;
+                usageBElement.textContent = '用电量: ' + Math.max(0, curB - lastB).toFixed(2) + ' kWh';
+            }
+            [lastReadingA, currentReadingA, lastReadingB, currentReadingB].forEach(function (input) {
+                input.addEventListener('input', updateUsageDisplay);
+            });
+
+            function clearErrors() {
+                errorLastA.style.display = 'none';
+                errorCurrentA.style.display = 'none';
+                errorLastB.style.display = 'none';
+                errorCurrentB.style.display = 'none';
+                errorTotal.style.display = 'none';
+                errorCurrentA.textContent = '请输入有效的本次抄表数';
+                errorCurrentB.textContent = '请输入有效的本次抄表数';
+            }
+
+            calculateBtn.addEventListener('click', function () {
+                clearErrors();
+                const periodOk = validatePeriod();
+                const lastA = parseFloat(lastReadingA.value);
+                const curA = parseFloat(currentReadingA.value);
+                const lastB = parseFloat(lastReadingB.value);
+                const curB = parseFloat(currentReadingB.value);
+                let valid = true;
+                if (isNaN(lastA) || lastA < 0) {errorLastA.style.display = 'block'; valid = false;}
+                if (isNaN(curA) || curA < 0) {errorCurrentA.style.display = 'block'; valid = false;}
+                if (isNaN(lastB) || lastB < 0) {errorLastB.style.display = 'block'; valid = false;}
+                if (isNaN(curB) || curB < 0) {errorCurrentB.style.display = 'block'; valid = false;}
+                if (!isNaN(curA) && !isNaN(lastA) && curA < lastA) {
+                    errorCurrentA.textContent = '本次抄表数不能小于上次抄表数';
+                    errorCurrentA.style.display = 'block'; valid = false;
+                }
+                if (!isNaN(curB) && !isNaN(lastB) && curB < lastB) {
+                    errorCurrentB.textContent = '本次抄表数不能小于上次抄表数';
+                    errorCurrentB.style.display = 'block'; valid = false;
+                }
+                const totalBill = getTotalBill();
+                if (totalBill <= 0) {errorTotal.style.display = 'block'; valid = false;}
+                if (!valid || !periodOk) return;
+
+                const usageA = curA - lastA;
+                const usageB = curB - lastB;
+                const totalUsage = usageA + usageB;
+                if (totalUsage <= 0) {
+                    errorCurrentA.textContent = '总用电量不能为零';
+                    errorCurrentA.style.display = 'block';
+                    errorCurrentB.textContent = '总用电量不能为零';
+                    errorCurrentB.style.display = 'block';
+                    return;
+                }
+                const ratioA = usageA / totalUsage;
+                const ratioB = usageB / totalUsage;
+                billAElement.textContent = (totalBill * ratioA).toFixed(2) + ' 元';
+                billBElement.textContent = (totalBill * ratioB).toFixed(2) + ' 元';
+                totalBillResult.textContent = totalBill.toFixed(2) + ' 元';
+                totalUsageElement.textContent = totalUsage.toFixed(2) + ' kWh';
+                ratioAElement.textContent = (ratioA * 100).toFixed(2) + '%';
+                ratioBElement.textContent = (ratioB * 100).toFixed(2) + '%';
+
+                const periodText = formatPeriod();
+                if (periodText) {
+                    electricityPeriodDisplay.textContent = periodText;
+                    electricityPeriodDisplay.style.display = 'inline-block';
+                } else electricityPeriodDisplay.style.display = 'none';
+
+                resultDiv.style.display = 'block';
+                electricitySaveProgress.style.display = 'none';
+                saveElectricityBtn.disabled = false;
+                saveElectricityBtn.textContent = '💾 保存本次记录';
+
+                // 暂存待保存的结果
+                pendingElectricityResult = {
+                    type: 'electricity',
+                    nameA: nicknameAInput.value.trim() || '住户A',
+                    nameB: nicknameBInput.value.trim() || '住户B',
+                    billA: totalBill * ratioA,
+                    billB: totalBill * ratioB,
+                    usageA: usageA, usageB: usageB,
+                    ratioA: ratioA, ratioB: ratioB,
+                    totalBill: totalBill, totalUsage: totalUsage,
+                    period: periodPlainText(),
+                    electricity: {
+                        lastA: lastReadingA.value, currentA: currentReadingA.value,
+                        lastB: lastReadingB.value, currentB: currentReadingB.value,
+                        fees: Array.from(feeList.querySelectorAll('.fee-item')).map(function (item) {
+                            return {op: item.querySelector('.fee-op').value, amount: item.querySelector('.fee-amount').value};
+                        })
+                    }
+                };
+            });
+
+            resetBtn.addEventListener('click', function () {
+                lastReadingA.value = '';
+                currentReadingA.value = '';
+                lastReadingB.value = '';
+                currentReadingB.value = '';
+                feeList.innerHTML = '';
+                feeList.appendChild(createFeeItem('+', ''));
+                updateTotalBill();
+                resultDiv.style.display = 'none';
+                electricitySaveProgress.style.display = 'none';
+                pendingElectricityResult = null;
+                clearErrors();
+                updateUsageDisplay();
+            });
+
+            /* ============================================================
+               水费逻辑
+               ============================================================ */
+            const waterLastA = document.getElementById('waterLastA');
+            const waterCurrentA = document.getElementById('waterCurrentA');
+            const waterLastB = document.getElementById('waterLastB');
+            const waterCurrentB = document.getElementById('waterCurrentB');
+            const waterPrice = document.getElementById('waterPrice');
+            const waterUsageADisplay = document.getElementById('waterUsageADisplay');
+            const waterUsageBDisplay = document.getElementById('waterUsageBDisplay');
+            const waterCalculateBtn = document.getElementById('waterCalculate');
+            const waterResetBtn = document.getElementById('waterReset');
+            const waterResultDiv = document.getElementById('water-result');
+            const waterPeriodDisplay = document.getElementById('waterPeriodDisplay');
+            const waterErrorLastA = document.getElementById('waterErrorLastA');
+            const waterErrorCurrentA = document.getElementById('waterErrorCurrentA');
+            const waterErrorLastB = document.getElementById('waterErrorLastB');
+            const waterErrorCurrentB = document.getElementById('waterErrorCurrentB');
+            const waterErrorPrice = document.getElementById('waterErrorPrice');
+            const waterUsageAResult = document.getElementById('waterUsageAResult');
+            const waterBillA = document.getElementById('waterBillA');
+            const waterUsageBResult = document.getElementById('waterUsageBResult');
+            const waterBillB = document.getElementById('waterBillB');
+            const saveWaterBtn = document.getElementById('saveWater');
+            const waterSaveProgress = document.getElementById('waterSaveProgress');
+
+            function updateWaterUsageDisplay() {
+                const lA = parseFloat(waterLastA.value) || 0;
+                const cA = parseFloat(waterCurrentA.value) || 0;
+                waterUsageADisplay.textContent = '用水量: ' + Math.max(0, cA - lA).toFixed(2) + ' 吨';
+                const lB = parseFloat(waterLastB.value) || 0;
+                const cB = parseFloat(waterCurrentB.value) || 0;
+                waterUsageBDisplay.textContent = '用水量: ' + Math.max(0, cB - lB).toFixed(2) + ' 吨';
+            }
+            [waterLastA, waterCurrentA, waterLastB, waterCurrentB].forEach(function (input) {
+                input.addEventListener('input', updateWaterUsageDisplay);
+            });
+            waterPrice.addEventListener('input', function () {waterErrorPrice.style.display = 'none';});
+
+            function clearWaterErrors() {
+                waterErrorLastA.style.display = 'none';
+                waterErrorCurrentA.style.display = 'none';
+                waterErrorLastB.style.display = 'none';
+                waterErrorCurrentB.style.display = 'none';
+                waterErrorPrice.style.display = 'none';
+                waterErrorCurrentA.textContent = '请输入有效的本次读数';
+                waterErrorCurrentB.textContent = '请输入有效的本次读数';
+            }
+
+            waterCalculateBtn.addEventListener('click', function () {
+                clearWaterErrors();
+                const periodOk = validatePeriod();
+                const lA = parseFloat(waterLastA.value);
+                const cA = parseFloat(waterCurrentA.value);
+                const lB = parseFloat(waterLastB.value);
+                const cB = parseFloat(waterCurrentB.value);
+                const price = parseFloat(waterPrice.value);
+                let valid = true;
+                if (isNaN(lA) || lA < 0) {waterErrorLastA.style.display = 'block'; valid = false;}
+                if (isNaN(cA) || cA < 0) {waterErrorCurrentA.style.display = 'block'; valid = false;}
+                if (isNaN(lB) || lB < 0) {waterErrorLastB.style.display = 'block'; valid = false;}
+                if (isNaN(cB) || cB < 0) {waterErrorCurrentB.style.display = 'block'; valid = false;}
+                if (!isNaN(cA) && !isNaN(lA) && cA < lA) {
+                    waterErrorCurrentA.textContent = '本次读数不能小于上次读数';
+                    waterErrorCurrentA.style.display = 'block'; valid = false;
+                }
+                if (!isNaN(cB) && !isNaN(lB) && cB < lB) {
+                    waterErrorCurrentB.textContent = '本次读数不能小于上次读数';
+                    waterErrorCurrentB.style.display = 'block'; valid = false;
+                }
+                if (isNaN(price) || price <= 0) {waterErrorPrice.style.display = 'block'; valid = false;}
+                if (!valid || !periodOk) return;
+
+                const usageA = cA - lA;
+                const usageB = cB - lB;
+                if (usageA + usageB <= 0) {
+                    waterErrorCurrentA.textContent = '总用水量不能为零';
+                    waterErrorCurrentA.style.display = 'block';
+                    waterErrorCurrentB.textContent = '总用水量不能为零';
+                    waterErrorCurrentB.style.display = 'block';
+                    return;
+                }
+                const billA = usageA * price;
+                const billB = usageB * price;
+                waterUsageAResult.textContent = usageA.toFixed(2) + ' 吨';
+                waterBillA.textContent = billA.toFixed(2) + ' 元';
+                waterUsageBResult.textContent = usageB.toFixed(2) + ' 吨';
+                waterBillB.textContent = billB.toFixed(2) + ' 元';
+
+                const periodText = formatPeriod();
+                if (periodText) {
+                    waterPeriodDisplay.textContent = periodText;
+                    waterPeriodDisplay.style.display = 'inline-block';
+                } else waterPeriodDisplay.style.display = 'none';
+
+                waterResultDiv.style.display = 'block';
+                waterSaveProgress.style.display = 'none';
+                saveWaterBtn.disabled = false;
+                saveWaterBtn.textContent = '💾 保存本次记录';
+
+                pendingWaterResult = {
+                    type: 'water',
+                    nameA: nicknameAInput.value.trim() || '住户A',
+                    nameB: nicknameBInput.value.trim() || '住户B',
+                    billA: billA, billB: billB,
+                    usageA: usageA, usageB: usageB,
+                    price: price,
+                    period: periodPlainText(),
+                    water: {
+                        lastA: waterLastA.value, currentA: waterCurrentA.value,
+                        lastB: waterLastB.value, currentB: waterCurrentB.value
+                    }
+                };
+            });
+
+            waterResetBtn.addEventListener('click', function () {
+                waterLastA.value = '';
+                waterCurrentA.value = '';
+                waterLastB.value = '';
+                waterCurrentB.value = '';
+                waterPrice.value = '';
+                waterResultDiv.style.display = 'none';
+                waterSaveProgress.style.display = 'none';
+                pendingWaterResult = null;
+                clearWaterErrors();
+                updateWaterUsageDisplay();
+            });
+
+            /* ============================================================
+               保存本次记录
+               ============================================================ */
+            function setSaveProgress(el, cls, text) {
+                el.className = 'save-progress ' + cls;
+                el.textContent = text;
+                el.style.display = 'block';
+            }
+
+            async function doSave(pending, progressEl, btnEl, clearFn) {
+                if (!currentRoom) {
+                    setSaveProgress(progressEl, 'error', '⚠️ 尚未进入房间，无法保存记录。请先在顶部进入共享房间。');
+                    return;
+                }
+                if (!pending) return;
+
+                btnEl.disabled = true;
+                setSaveProgress(progressEl, 'saving', '⏳ 保存中...请勿关闭页面');
+
+                // 生成历史条目
+                const entry = {
+                    id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+                    type: pending.type,
+                    timestamp: Date.now(),
+                    period: pending.period,
+                    input: Object.assign({}, pending),
+                    result: Object.assign({}, pending)
+                };
+                delete entry.input.type;
+                delete entry.input.period;
+
+                // 加入本地历史（先加入，再尝试推送）
+                localHistory.unshift(entry);
+                if (localHistory.length > 200) localHistory.length = 200;
+                renderHistory();
+
+                // 合并到房间数据推送
+                const roomData = buildRoomData();
+
+                // 推送，重试 2 次
+                let success = false;
+                let lastErr = null;
+                for (let i = 0; i < 3; i++) {
+                    try {
+                        const res = await fetch(API_BASE + '/api/room/' + currentRoom, {
+                            method: 'PUT',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(roomData)
+                        });
+                        if (!res.ok) throw new Error('HTTP ' + res.status);
+                        success = true;
+                        break;
+                    } catch (e) {
+                        lastErr = e;
+                        setSaveProgress(progressEl, 'saving', '⏳ 保存中（重试 ' + (i + 1) + '/3）...请勿关闭页面');
+                        await new Promise(r => setTimeout(r, 800));
+                    }
+                }
+
+                if (success) {
+                    lastRemoteTs = roomData.updatedAt;
+                    setSaveProgress(progressEl, 'success', '✅ 保存成功！输入框即将清空...');
+                    setTimeout(function () {
+                        clearFn();
+                        progressEl.style.display = 'none';
+                        btnEl.disabled = false;
+                        btnEl.textContent = '💾 保存本次记录';
+                    }, 2000);
+                } else {
+                    setSaveProgress(progressEl, 'error', '❌ 保存失败：' + (lastErr ? lastErr.message : '未知错误') + '。已缓存本地，下次进入房间会自动重传。');
+                    // 缓存到待重传队列
+                    enqueuePending(currentRoom, roomData);
+                    btnEl.disabled = false;
+                    btnEl.textContent = '🔄 重试保存';
+                }
+            }
+
+            saveElectricityBtn.addEventListener('click', function () {
+                doSave(pendingElectricityResult, electricitySaveProgress, saveElectricityBtn, function () {
+                    // 清空电费输入
+                    lastReadingA.value = '';
+                    currentReadingA.value = '';
+                    lastReadingB.value = '';
+                    currentReadingB.value = '';
+                    feeList.innerHTML = '';
+                    feeList.appendChild(createFeeItem('+', ''));
+                    updateTotalBill();
+                    resultDiv.style.display = 'none';
+                    updateUsageDisplay();
+                    pendingElectricityResult = null;
+                });
+            });
+
+            saveWaterBtn.addEventListener('click', function () {
+                doSave(pendingWaterResult, waterSaveProgress, saveWaterBtn, function () {
+                    waterLastA.value = '';
+                    waterCurrentA.value = '';
+                    waterLastB.value = '';
+                    waterCurrentB.value = '';
+                    waterPrice.value = '';
+                    waterResultDiv.style.display = 'none';
+                    updateWaterUsageDisplay();
+                    pendingWaterResult = null;
+                });
+            });
+
+            /* ============================================================
+               历史记录
+               ============================================================ */
+            function mergeHistory(local, remote) {
+                const map = new Map();
+                [...(remote || []), ...(local || [])].forEach(function (item) {
+                    if (item && item.id) map.set(item.id, item);
+                });
+                return Array.from(map.values())
+                    .sort(function (a, b) {return b.timestamp - a.timestamp;})
+                    .slice(0, 200);
+            }
+
+            function formatTime(ts) {
+                const d = new Date(ts);
+                const now = new Date();
+                const pad = function (n) {return n < 10 ? '0' + n : n;};
+                const mmdd = pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+                const hhmm = pad(d.getHours()) + ':' + pad(d.getMinutes());
+                if (d.getFullYear() === now.getFullYear()) return mmdd + ' ' + hhmm;
+                return d.getFullYear() + '-' + mmdd + ' ' + hhmm;
+            }
+
+            function escapeHtml(s) {
+                return String(s).replace(/[&<>"']/g, function (c) {
+                    return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+                });
+            }
+
+            function renderHistory() {
+                const list = document.getElementById('historyList');
+                if (!localHistory.length) {
+                    list.innerHTML = '<div class="empty-tip">暂无历史记录</div>';
+                    return;
+                }
+                list.innerHTML = localHistory.map(function (item) {
+                    const r = item.result || item.input;
+                    const isWater = item.type === 'water';
+                    let bodyRows = '';
+                    if (isWater) {
+                        bodyRows =
+                            '<div><span class="hb-name">' + escapeHtml(r.nameA) + '：</span>' +
+                            '<span class="hb-amount">¥' + r.billA.toFixed(2) + '</span>' +
+                            '<span class="hb-usage">(' + r.usageA.toFixed(2) + ' 吨)</span></div>' +
+                            '<div><span class="hb-name">' + escapeHtml(r.nameB) + '：</span>' +
+                            '<span class="hb-amount">¥' + r.billB.toFixed(2) + '</span>' +
+                            '<span class="hb-usage">(' + r.usageB.toFixed(2) + ' 吨)</span></div>' +
+                            '<div class="hb-extra">单价 ' + r.price.toFixed(2) + ' 元/吨</div>';
+                    } else {
+                        bodyRows =
+                            '<div><span class="hb-name">' + escapeHtml(r.nameA) + '：</span>' +
+                            '<span class="hb-amount">¥' + r.billA.toFixed(2) + '</span>' +
+                            '<span class="hb-usage">(' + r.usageA.toFixed(2) + ' kWh · ' +
+                            (r.ratioA * 100).toFixed(1) + '%)</span></div>' +
+                            '<div><span class="hb-name">' + escapeHtml(r.nameB) + '：</span>' +
+                            '<span class="hb-amount">¥' + r.billB.toFixed(2) + '</span>' +
+                            '<span class="hb-usage">(' + r.usageB.toFixed(2) + ' kWh · ' +
+                            (r.ratioB * 100).toFixed(1) + '%)</span></div>' +
+                            '<div class="hb-extra">总电费 ¥' + r.totalBill.toFixed(2) +
+                            ' · 总用电量 ' + r.totalUsage.toFixed(2) + ' kWh</div>';
+                    }
+                    return '<div class="history-item ' + (isWater ? 'type-water' : '') + '" data-id="' + item.id + '">' +
+                        '<div class="history-header">' +
+                        '<span class="history-type">' + (isWater ? '💧 水费' : '⚡ 电费') + '</span>' +
+                        '<span class="history-time">' + formatTime(item.timestamp) + '</span>' +
+                        '</div>' +
+                        '<div class="history-period">📅 ' + item.period + '</div>' +
+                        '<div class="history-body">' + bodyRows + '</div>' +
+                        '<div class="history-actions">' +
+                        '<button type="button" data-action="load">回填</button>' +
+                        '<button type="button" data-action="delete">删除</button>' +
+                        '</div>' +
+                        '</div>';
+                }).join('');
+            }
+
+            document.getElementById('historyList').addEventListener('click', function (e) {
+                const btn = e.target.closest('[data-action]');
+                if (!btn) return;
+                const itemEl = btn.closest('.history-item');
+                const id = itemEl.dataset.id;
+                const action = btn.dataset.action;
+
+                if (action === 'delete') {
+                    if (!confirm('确定删除这条历史记录？（会同步给房间内所有人）')) return;
+                    localHistory = localHistory.filter(function (it) {return it.id !== id;});
+                    renderHistory();
+                    if (currentRoom) {
+                        const roomData = buildRoomData();
+                        fetch(API_BASE + '/api/room/' + currentRoom, {
+                            method: 'PUT',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(roomData)
+                        }).catch(function () { });
+                    }
+                }
+
+                if (action === 'load') {
+                    const item = localHistory.find(function (it) {return it.id === id;});
+                    if (!item) return;
+                    applyHistoryEntry(item);
+                }
+            });
+
+            document.getElementById('clearHistoryBtn').addEventListener('click', function () {
+                if (!localHistory.length) return;
+                if (!confirm('确定清空全部历史记录？（会同步给房间内所有人）')) return;
+                localHistory = [];
+                renderHistory();
+                if (currentRoom) {
+                    const roomData = buildRoomData();
+                    fetch(API_BASE + '/api/room/' + currentRoom, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(roomData)
+                    }).catch(function () { });
+                }
+            });
+
+            /* 回填历史条目 */
+            function applyHistoryEntry(item) {
+                const src = item.input || {};
+                if (src.nameA !== undefined) nicknameAInput.value = src.nameA === '住户A' ? '' : src.nameA;
+                if (src.nameB !== undefined) nicknameBInput.value = src.nameB === '住户B' ? '' : src.nameB;
+                if (src.period && src.period !== '未设置周期') {
+                    const parts = src.period.split(' ~ ');
+                    if (parts.length === 2) {
+                        periodStart.value = parts[0];
+                        periodEnd.value = parts[1];
+                    }
+                }
+
+                if (item.type === 'electricity' && src.electricity) {
+                    lastReadingA.value = src.electricity.lastA || '';
+                    currentReadingA.value = src.electricity.currentA || '';
+                    lastReadingB.value = src.electricity.lastB || '';
+                    currentReadingB.value = src.electricity.currentB || '';
+                    feeList.innerHTML = '';
+                    (src.electricity.fees || [{op: '+', amount: ''}]).forEach(function (f) {
+                        feeList.appendChild(createFeeItem(f.op, f.amount));
+                    });
+                    updateTotalBill();
+                    updateUsageDisplay();
+                    document.querySelector('.tab[data-tab="electricity"]').click();
+                } else if (item.type === 'water' && src.water) {
+                    waterLastA.value = src.water.lastA || '';
+                    waterCurrentA.value = src.water.currentA || '';
+                    waterLastB.value = src.water.lastB || '';
+                    waterCurrentB.value = src.water.currentB || '';
+                    if (src.price !== undefined) waterPrice.value = src.price;
+                    updateWaterUsageDisplay();
+                    document.querySelector('.tab[data-tab="water"]').click();
+                }
+                updateNames();
+                window.scrollTo({top: 0, behavior: 'smooth'});
+            }
+
+            /* ============================================================
+               房间数据组装 & 应用
+               ============================================================ */
+            function buildRoomData() {
+                const fees = [];
+                feeList.querySelectorAll('.fee-item').forEach(function (item) {
+                    fees.push({
+                        op: item.querySelector('.fee-op').value,
+                        amount: item.querySelector('.fee-amount').value
+                    });
+                });
+                return {
+                    updatedAt: Date.now(),
+                    nicknameA: nicknameAInput.value,
+                    nicknameB: nicknameBInput.value,
+                    periodStart: periodStart.value,
+                    periodEnd: periodEnd.value,
+                    waterPrice: waterPrice.value,
+                    electricity: {
+                        lastA: lastReadingA.value, currentA: currentReadingA.value,
+                        lastB: lastReadingB.value, currentB: currentReadingB.value,
+                        fees: fees
+                    },
+                    water: {
+                        lastA: waterLastA.value, currentA: waterCurrentA.value,
+                        lastB: waterLastB.value, currentB: waterCurrentB.value
+                    },
+                    history: localHistory
+                };
+            }
+
+            function applyRoomData(d) {
+                if (!d) return;
+                nicknameAInput.value = d.nicknameA || '';
+                nicknameBInput.value = d.nicknameB || '';
+                if (d.periodStart) periodStart.value = d.periodStart;
+                if (d.periodEnd) periodEnd.value = d.periodEnd;
+                waterPrice.value = d.waterPrice || '';
+                if (d.electricity) {
+                    lastReadingA.value = d.electricity.lastA || '';
+                    currentReadingA.value = d.electricity.currentA || '';
+                    lastReadingB.value = d.electricity.lastB || '';
+                    currentReadingB.value = d.electricity.currentB || '';
+                    feeList.innerHTML = '';
+                    (d.electricity.fees || [{op: '+', amount: ''}]).forEach(function (f) {
+                        feeList.appendChild(createFeeItem(f.op, f.amount));
+                    });
+                }
+                if (d.water) {
+                    waterLastA.value = d.water.lastA || '';
+                    waterCurrentA.value = d.water.currentA || '';
+                    waterLastB.value = d.water.lastB || '';
+                    waterCurrentB.value = d.water.currentB || '';
+                }
+                localHistory = mergeHistory(localHistory, d.history);
+                renderHistory();
+                updateNames();
+                updateTotalBill();
+                updateUsageDisplay();
+                updateWaterUsageDisplay();
+                validatePeriod();
+
+                // 自动填充：把上次历史的本次抄表数填入"上次抄表数"
+                autoFillFromLastHistory();
+            }
+
+            /* 自动填充上次抄表数 */
+            function autoFillFromLastHistory() {
+                // 找最近一条电费历史
+                const lastElec = localHistory.find(function (it) {return it.type === 'electricity';});
+                if (lastElec && lastElec.result) {
+                    // 如果当前"上次抄表数"是空的，才自动填充，避免覆盖用户正在输入的内容
+                    if (!lastReadingA.value && lastElec.result.usageA !== undefined) {
+                        const lastCurrentA = lastElec.input && lastElec.input.electricity ? lastElec.input.electricity.currentA : '';
+                        if (lastCurrentA) lastReadingA.value = lastCurrentA;
+                    }
+                    if (!lastReadingB.value && lastElec.result.usageB !== undefined) {
+                        const lastCurrentB = lastElec.input && lastElec.input.electricity ? lastElec.input.electricity.currentB : '';
+                        if (lastCurrentB) lastReadingB.value = lastCurrentB;
+                    }
+                    updateUsageDisplay();
+                }
+
+                // 找最近一条水费历史
+                const lastWater = localHistory.find(function (it) {return it.type === 'water';});
+                if (lastWater && lastWater.result) {
+                    if (!waterLastA.value && lastWater.input && lastWater.input.water) {
+                        const lastCurrentWA = lastWater.input.water.currentA;
+                        if (lastCurrentWA) waterLastA.value = lastCurrentWA;
+                    }
+                    if (!waterLastB.value && lastWater.input && lastWater.input.water) {
+                        const lastCurrentWB = lastWater.input.water.currentB;
+                        if (lastCurrentWB) waterLastB.value = lastCurrentWB;
+                    }
+                    if (!waterPrice.value && lastWater.result.price) {
+                        waterPrice.value = lastWater.result.price;
+                    }
+                    updateWaterUsageDisplay();
+                }
+            }
+
+            /* ============================================================
+               房间进入/退出
+               ============================================================ */
+            const roomEntry = document.getElementById('roomEntry');
+            const roomActive = document.getElementById('roomActive');
+            const roomCodeInput = document.getElementById('roomCode');
+            const joinRoomBtn = document.getElementById('joinRoom');
+            const leaveRoomBtn = document.getElementById('leaveRoom');
+            const syncStatus = document.getElementById('syncStatus');
+            const syncStatusActive = document.getElementById('syncStatusActive');
+            const currentRoomDisplay = document.getElementById('currentRoomDisplay');
+
+            function setSyncStatus(text, cls) {
+                syncStatus.textContent = text;
+                syncStatus.className = 'room-status' + (cls ? ' ' + cls : '');
+                syncStatusActive.textContent = text;
+                syncStatusActive.className = 'room-status' + (cls ? ' ' + cls : '');
+            }
+
+            /* 待重传队列 */
+            function getPendingQueue() {
+                try {return JSON.parse(localStorage.getItem('utility_calc_pending') || '[]');}
+                catch (e) {return [];}
+            }
+            function setPendingQueue(q) {
+                try {localStorage.setItem('utility_calc_pending', JSON.stringify(q));} catch (e) { }
+            }
+            function enqueuePending(room, data) {
+                const q = getPendingQueue().filter(function (item) {return item.room !== room;});
+                q.push({room: room, data: data, ts: Date.now()});
+                setPendingQueue(q);
+            }
+            function dequeuePending(room) {
+                setPendingQueue(getPendingQueue().filter(function (item) {return item.room !== room;}));
+            }
+            async function flushPendingQueue() {
+                const q = getPendingQueue();
+                for (const item of q) {
+                    try {
+                        await fetch(API_BASE + '/api/room/' + item.room, {
+                            method: 'PUT',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(item.data)
+                        });
+                        dequeuePending(item.room);
+                    } catch (e) { }
+                }
+            }
+
+            async function pullFromServer(retries) {
+                if (!currentRoom) return;
+                if (retries === undefined) retries = 3;
+                try {
+                    const res = await fetch(API_BASE + '/api/room/' + currentRoom + '?t=' + Date.now());
+                    const data = await res.json();
+                    if (!data.exists) {
+                        if (retries > 0) {
+                            setSyncStatus('🔄 正在等待远端数据同步...（剩余 ' + retries + '）');
+                            setTimeout(function () {pullFromServer(retries - 1);}, 2000);
+                            return;
+                        }
+                        setSyncStatus('❌ 房间不存在或未开放，请联系管理员', 'err');
+                        return;
+                    }
+                    if (data.updatedAt && data.updatedAt > lastRemoteTs) {
+                        lastRemoteTs = data.updatedAt;
+                        applyRoomData(data);
+                        setSyncStatus('✅ 已同步（' + new Date(data.updatedAt).toLocaleTimeString() + '）', 'ok');
+                    } else {
+                        setSyncStatus('✅ 已同步', 'ok');
+                    }
+                } catch (e) {
+                    setSyncStatus('❌ 同步失败：' + e.message, 'err');
+                }
+            }
+
+            async function enterRoom(code) {
+                if (!/^[A-Za-z0-9]{4,16}$/.test(code)) {
+                    setSyncStatus('⚠️ 房间码需 4~16 位字母或数字', 'err');
+                    return false;
+                }
+                currentRoom = code;
+                localStorage.setItem('utility_calc_room', code);
+                currentRoomDisplay.textContent = code;
+                setSyncStatus('正在连接...');
+
+                // 尝试拉取远端数据（最多重试 3 次）
+                const ok = await new Promise(function (resolve) {
+                    let tries = 3;
+                    (function tryPull() {
+                        fetch(API_BASE + '/api/room/' + currentRoom + '?t=' + Date.now())
+                            .then(function (r) {return r.json();})
+                            .then(function (data) {
+                                if (data.exists) {
+                                    lastRemoteTs = data.updatedAt || 0;
+                                    applyRoomData(data);
+                                    resolve(true);
+                                } else if (tries > 0) {
+                                    tries--;
+                                    setSyncStatus('🔄 正在等待房间数据...（剩余 ' + tries + '）');
+                                    setTimeout(tryPull, 1500);
+                                } else {
+                                    setSyncStatus('❌ ' + (data.message || '房间不存在或未开放'), 'err');
+                                    resolve(false);
+                                }
+                            })
+                            .catch(function (e) {
+                                setSyncStatus('❌ 连接失败：' + e.message, 'err');
+                                resolve(false);
+                            });
+                    })();
+                });
+
+                if (!ok) {
+                    currentRoom = '';
+                    localStorage.removeItem('utility_calc_room');
+                    return false;
+                }
+
+                // 尝试重传待发送数据
+                await flushPendingQueue();
+
+                setSyncStatus('✅ 已进入房间', 'ok');
+                roomEntry.style.display = 'none';
+                roomActive.style.display = 'block';
+
+                clearInterval(pollTimer);
+                pollTimer = setInterval(function () {pullFromServer(0);}, SYNC_INTERVAL);
+                return true;
+            }
+
+            function leaveRoom() {
+                currentRoom = '';
+                localStorage.removeItem('utility_calc_room');
+                clearInterval(pollTimer);
+                pollTimer = null;
+                roomEntry.style.display = 'block';
+                roomActive.style.display = 'none';
+                roomCodeInput.value = '';
+                setSyncStatus('未进入共享房间');
+            }
+
+            joinRoomBtn.addEventListener('click', function () {
+                const code = roomCodeInput.value.trim().toUpperCase();
+                enterRoom(code);
+            });
+
+            leaveRoomBtn.addEventListener('click', function () {
+                if (!confirm('确定退出当前房间？退出后本地仍会保留历史缓存。')) return;
+                leaveRoom();
+            });
+
+            /* ============================================================
+               管理员面板
+               ============================================================ */
+            const adminLoginCard = document.getElementById('adminLoginCard');
+            const adminPanelContent = document.getElementById('adminPanelContent');
+            const adminPasswordInput = document.getElementById('adminPassword');
+            const adminLoginBtn = document.getElementById('adminLoginBtn');
+            const adminLoginStatus = document.getElementById('adminLoginStatus');
+            const adminLogoutBtn = document.getElementById('adminLogoutBtn');
+            const newRoomCode = document.getElementById('newRoomCode');
+            const newRoomNote = document.getElementById('newRoomNote');
+            const createRoomBtn = document.getElementById('createRoomBtn');
+            const adminCreateStatus = document.getElementById('adminCreateStatus');
+            const adminRoomList = document.getElementById('adminRoomList');
+
+            function showAdminStatus(el, text, cls) {
+                el.textContent = text;
+                el.className = 'room-status' + (cls ? ' ' + cls : '');
+            }
+
+            adminLoginBtn.addEventListener('click', async function () {
+                const pwd = adminPasswordInput.value;
+                if (!pwd) {showAdminStatus(adminLoginStatus, '请输入密码', 'err'); return;}
+                showAdminStatus(adminLoginStatus, '登录中...');
+                try {
+                    const res = await fetch(API_BASE + '/api/admin/login', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({password: pwd})
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || '登录失败');
+                    adminToken = data.token;
+                    localStorage.setItem('admin_token', adminToken);
+                    adminPasswordInput.value = '';
+                    showAdminStatus(adminLoginStatus, '✅ 登录成功', 'ok');
+                    adminLoginCard.style.display = 'none';
+                    adminPanelContent.style.display = 'block';
+                    loadAdminRooms();
+                } catch (e) {
+                    showAdminStatus(adminLoginStatus, '❌ ' + e.message, 'err');
+                }
+            });
+
+            adminLogoutBtn.addEventListener('click', function () {
+                adminToken = '';
+                localStorage.removeItem('admin_token');
+                adminLoginCard.style.display = 'block';
+                adminPanelContent.style.display = 'none';
+                showAdminStatus(adminLoginStatus, '');
+            });
+
+            async function loadAdminRooms() {
+                adminRoomList.innerHTML = '<div class="empty-tip">加载中...</div>';
+                try {
+                    const res = await fetch(API_BASE + '/api/admin/rooms', {
+                        headers: {'Authorization': 'Bearer ' + adminToken}
+                    });
+                    if (res.status === 401) {
+                        adminToken = '';
+                        localStorage.removeItem('admin_token');
+                        adminLoginCard.style.display = 'block';
+                        adminPanelContent.style.display = 'none';
+                        return;
+                    }
+                    const data = await res.json();
+                    const rooms = data.rooms || [];
+                    if (!rooms.length) {
+                        adminRoomList.innerHTML = '<div class="empty-tip">暂无房间</div>';
+                        return;
+                    }
+                    adminRoomList.innerHTML = rooms.map(function (r) {
+                        return '<div class="admin-room-item" data-code="' + r.code + '">' +
+                            '<div class="admin-room-info">' +
+                            '<div class="admin-room-code">' + escapeHtml(r.code) + '</div>' +
+                            '<div class="admin-room-note">' + (r.note ? escapeHtml(r.note) : '（无备注）') + '</div>' +
+                            '</div>' +
+                            '<div class="admin-room-actions">' +
+                            '<button class="ghost-btn" data-action="edit">改备注</button>' +
+                            '<button class="danger-btn" data-action="delete">删除</button>' +
+                            '</div>' +
+                            '</div>';
+                    }).join('');
+                } catch (e) {
+                    adminRoomList.innerHTML = '<div class="empty-tip">❌ 加载失败：' + e.message + '</div>';
+                }
+            }
+
+            createRoomBtn.addEventListener('click', async function () {
+                const code = newRoomCode.value.trim().toUpperCase();
+                const note = newRoomNote.value.trim();
+                if (!/^[A-Za-z0-9]{4,16}$/.test(code)) {
+                    showAdminStatus(adminCreateStatus, '⚠️ 房间码需 4~16 位字母或数字', 'err');
+                    return;
+                }
+                showAdminStatus(adminCreateStatus, '创建中...');
+                try {
+                    const res = await fetch(API_BASE + '/api/admin/rooms', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + adminToken
+                        },
+                        body: JSON.stringify({code: code, note: note})
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || '创建失败');
+                    showAdminStatus(adminCreateStatus, '✅ 房间 ' + code + ' 创建成功', 'ok');
+                    newRoomCode.value = '';
+                    newRoomNote.value = '';
+                    loadAdminRooms();
+                } catch (e) {
+                    showAdminStatus(adminCreateStatus, '❌ ' + e.message, 'err');
+                }
+            });
+
+            adminRoomList.addEventListener('click', async function (e) {
+                const btn = e.target.closest('[data-action]');
+                if (!btn) return;
+                const item = btn.closest('.admin-room-item');
+                const code = item.dataset.code;
+                const action = btn.dataset.action;
+
+                if (action === 'delete') {
+                    if (!confirm('确定删除房间 ' + code + '？该房间的历史数据也会一并删除！')) return;
+                    try {
+                        const res = await fetch(API_BASE + '/api/admin/rooms/' + code, {
+                            method: 'DELETE',
+                            headers: {'Authorization': 'Bearer ' + adminToken}
+                        });
+                        if (!res.ok) throw new Error('删除失败');
+                        loadAdminRooms();
+                    } catch (e) {
+                        alert('❌ ' + e.message);
+                    }
+                }
+
+                if (action === 'edit') {
+                    const currentNote = item.querySelector('.admin-room-note').textContent;
+                    const note = prompt('修改备注：', currentNote === '（无备注）' ? '' : currentNote);
+                    if (note === null) return;
+                    try {
+                        const res = await fetch(API_BASE + '/api/admin/rooms/' + code, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': 'Bearer ' + adminToken
+                            },
+                            body: JSON.stringify({note: note})
+                        });
+                        if (!res.ok) throw new Error('修改失败');
+                        loadAdminRooms();
+                    } catch (e) {
+                        alert('❌ ' + e.message);
+                    }
+                }
+            });
+
+            /* ============================================================
+               初始化
+               ============================================================ */
+            feeList.appendChild(createFeeItem('+', ''));
+            updateTotalBill();
+            updateUsageDisplay();
+            updateWaterUsageDisplay();
+            updateNames();
+            renderHistory();
+
+            // 自动恢复上次房间
+            const savedRoom = localStorage.getItem('utility_calc_room');
+            if (savedRoom) {
+                roomCodeInput.value = savedRoom;
+                enterRoom(savedRoom);
+            }
+        });
+    </script>
+</body>
+
+</html>
