@@ -150,6 +150,7 @@
 
         .input-group {
             flex: 1;
+            min-width: 0; /* 允许 flex 子项收缩，修复 iOS 上日期选择器溢出卡片 */
         }
 
         label {
@@ -171,6 +172,14 @@
             font-size: 16px;
             transition: border 0.3s;
             background: #fff;
+        }
+
+        /* iOS Safari/微信：日期输入框有较大的固有最小宽度，需显式允许收缩 */
+        input[type="date"] {
+            min-width: 0;
+            max-width: 100%;
+            -webkit-appearance: none;
+            appearance: none;
         }
 
         input:focus {
@@ -231,6 +240,11 @@
         }
 
         .fee-amount {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .fee-note {
             flex: 1;
             min-width: 0;
         }
@@ -764,6 +778,16 @@
                 font-size: 13px;
                 padding: 10px 4px;
             }
+
+            /* 费用项备注框在小屏独占一行 */
+            .fee-item {
+                flex-wrap: wrap;
+            }
+
+            .fee-note {
+                flex-basis: 100%;
+                order: 4;
+            }
         }
     </style>
 </head>
@@ -829,18 +853,33 @@
             </div>
 
             <div class="settings-section">
-                <div class="settings-section-title">计费周期</div>
+                <div class="settings-section-title">⚡ 电费计费周期</div>
                 <div class="input-row">
                     <div class="input-group">
-                        <label for="periodStart">开始日期</label>
-                        <input type="date" id="periodStart">
+                        <label for="elecPeriodStart">开始日期</label>
+                        <input type="date" id="elecPeriodStart">
                     </div>
                     <div class="input-group">
-                        <label for="periodEnd">结束日期</label>
-                        <input type="date" id="periodEnd">
+                        <label for="elecPeriodEnd">结束日期</label>
+                        <input type="date" id="elecPeriodEnd">
                     </div>
                 </div>
-                <div class="error" id="errorPeriod">结束日期不能早于开始日期</div>
+                <div class="error" id="errorElecPeriod">结束日期不能早于开始日期</div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">💧 水费计费周期</div>
+                <div class="input-row">
+                    <div class="input-group">
+                        <label for="waterPeriodStart">开始日期</label>
+                        <input type="date" id="waterPeriodStart">
+                    </div>
+                    <div class="input-group">
+                        <label for="waterPeriodEnd">结束日期</label>
+                        <input type="date" id="waterPeriodEnd">
+                    </div>
+                </div>
+                <div class="error" id="errorWaterPeriod">结束日期不能早于开始日期</div>
             </div>
         </div>
 
@@ -1145,11 +1184,19 @@
             });
 
             /* ============================================================
-               基础设置 - 计费周期
+               基础设置 - 计费周期（电费/水费相互独立）
                ============================================================ */
-            const periodStart = document.getElementById('periodStart');
-            const periodEnd = document.getElementById('periodEnd');
-            const errorPeriod = document.getElementById('errorPeriod');
+            const elecPeriodStart = document.getElementById('elecPeriodStart');
+            const elecPeriodEnd = document.getElementById('elecPeriodEnd');
+            const errorElecPeriod = document.getElementById('errorElecPeriod');
+            const waterPeriodStart = document.getElementById('waterPeriodStart');
+            const waterPeriodEnd = document.getElementById('waterPeriodEnd');
+            const errorWaterPeriod = document.getElementById('errorWaterPeriod');
+
+            const periods = {
+                electricity: {start: elecPeriodStart, end: elecPeriodEnd, err: errorElecPeriod},
+                water: {start: waterPeriodStart, end: waterPeriodEnd, err: errorWaterPeriod}
+            };
 
             // 结束日期默认今天
             (function initPeriod() {
@@ -1157,31 +1204,36 @@
                 const yyyy = today.getFullYear();
                 const mm = String(today.getMonth() + 1).padStart(2, '0');
                 const dd = String(today.getDate()).padStart(2, '0');
-                periodEnd.value = yyyy + '-' + mm + '-' + dd;
+                const todayStr = yyyy + '-' + mm + '-' + dd;
+                elecPeriodEnd.value = todayStr;
+                waterPeriodEnd.value = todayStr;
             })();
 
-            function validatePeriod() {
-                const s = periodStart.value, e = periodEnd.value;
-                if (s && e && s > e) {errorPeriod.style.display = 'block'; return false;}
-                errorPeriod.style.display = 'none';
+            function validatePeriod(type) {
+                const p = periods[type];
+                const s = p.start.value, e = p.end.value;
+                if (s && e && s > e) {p.err.style.display = 'block'; return false;}
+                p.err.style.display = 'none';
                 return true;
             }
-            function formatPeriod() {
-                const s = periodStart.value, e = periodEnd.value;
+            function formatPeriod(type) {
+                const s = periods[type].start.value, e = periods[type].end.value;
                 if (s && e) return '📅 计费周期：' + s + ' 至 ' + e;
                 if (s) return '📅 计费周期：' + s + ' 起';
                 if (e) return '📅 计费周期：截至 ' + e;
                 return '';
             }
-            function periodPlainText() {
-                const s = periodStart.value, e = periodEnd.value;
+            function periodPlainText(type) {
+                const s = periods[type].start.value, e = periods[type].end.value;
                 if (s && e) return s + ' ~ ' + e;
                 if (s) return s + ' 起';
                 if (e) return '截至 ' + e;
                 return '未设置周期';
             }
-            periodStart.addEventListener('input', function () {errorPeriod.style.display = 'none';});
-            periodEnd.addEventListener('input', function () {errorPeriod.style.display = 'none';});
+            elecPeriodStart.addEventListener('input', function () {errorElecPeriod.style.display = 'none';});
+            elecPeriodEnd.addEventListener('input', function () {errorElecPeriod.style.display = 'none';});
+            waterPeriodStart.addEventListener('input', function () {errorWaterPeriod.style.display = 'none';});
+            waterPeriodEnd.addEventListener('input', function () {errorWaterPeriod.style.display = 'none';});
 
             /* ============================================================
                电费逻辑
@@ -1213,7 +1265,7 @@
             const saveElectricityBtn = document.getElementById('saveElectricity');
             const electricitySaveProgress = document.getElementById('electricitySaveProgress');
 
-            function createFeeItem(op, amount) {
+            function createFeeItem(op, amount, note) {
                 const div = document.createElement('div');
                 div.className = 'fee-item';
                 div.innerHTML =
@@ -1222,9 +1274,11 @@
                     '<option value="-"' + (op === '-' ? ' selected' : '') + '>－</option>' +
                     '</select>' +
                     '<input type="number" class="fee-amount" min="0" step="0.01" placeholder="金额 (元)">' +
+                    '<input type="text" class="fee-note" maxlength="30" placeholder="备注（如：8月账单）">' +
                     '<button type="button" class="remove-fee" title="删除">×</button>';
                 const amountInput = div.querySelector('.fee-amount');
                 amountInput.value = amount != null ? amount : '';
+                div.querySelector('.fee-note').value = note != null ? note : '';
                 div.querySelector('.fee-op').addEventListener('change', updateTotalBill);
                 amountInput.addEventListener('input', function () {
                     errorTotal.style.display = 'none';
@@ -1235,6 +1289,7 @@
                     else {
                         div.querySelector('.fee-op').value = '+';
                         amountInput.value = '';
+                        div.querySelector('.fee-note').value = '';
                     }
                     updateTotalBill();
                 });
@@ -1287,7 +1342,7 @@
 
             calculateBtn.addEventListener('click', function () {
                 clearErrors();
-                const periodOk = validatePeriod();
+                const periodOk = validatePeriod('electricity');
                 const lastA = parseFloat(lastReadingA.value);
                 const curA = parseFloat(currentReadingA.value);
                 const lastB = parseFloat(lastReadingB.value);
@@ -1331,7 +1386,7 @@
                 ratioAElement.textContent = (ratioA * 100).toFixed(2) + '%';
                 ratioBElement.textContent = (ratioB * 100).toFixed(2) + '%';
 
-                const periodText = formatPeriod();
+                const periodText = formatPeriod('electricity');
                 if (periodText) {
                     electricityPeriodDisplay.textContent = periodText;
                     electricityPeriodDisplay.style.display = 'inline-block';
@@ -1349,19 +1404,23 @@
                     nameB: nicknameBInput.value.trim() || '住户B',
                     rawNameA: nicknameAInput.value,
                     rawNameB: nicknameBInput.value,
-                    periodStartVal: periodStart.value,
-                    periodEndVal: periodEnd.value,
+                    periodStartVal: elecPeriodStart.value,
+                    periodEndVal: elecPeriodEnd.value,
                     billA: billAYuan,
                     billB: billBYuan,
                     usageA: usageA, usageB: usageB,
                     ratioA: ratioA, ratioB: ratioB,
                     totalBill: totalBill, totalUsage: totalUsage,
-                    period: periodPlainText(),
+                    period: periodPlainText('electricity'),
                     electricity: {
                         lastA: lastReadingA.value, currentA: currentReadingA.value,
                         lastB: lastReadingB.value, currentB: currentReadingB.value,
                         fees: Array.from(feeList.querySelectorAll('.fee-item')).map(function (item) {
-                            return {op: item.querySelector('.fee-op').value, amount: item.querySelector('.fee-amount').value};
+                            return {
+                                op: item.querySelector('.fee-op').value,
+                                amount: item.querySelector('.fee-amount').value,
+                                note: item.querySelector('.fee-note').value
+                            };
                         })
                     }
                 };
@@ -1433,45 +1492,63 @@
 
             waterCalculateBtn.addEventListener('click', function () {
                 clearWaterErrors();
-                const periodOk = validatePeriod();
+                const periodOk = validatePeriod('water');
+                const price = parseFloat(waterPrice.value);
+
+                // 水费按户独立计算：每户要么全空（视为未填写），要么两次读数都填且合法；至少填一户
+                const hasA = waterLastA.value !== '' || waterCurrentA.value !== '';
+                const hasB = waterLastB.value !== '' || waterCurrentB.value !== '';
                 const lA = parseFloat(waterLastA.value);
                 const cA = parseFloat(waterCurrentA.value);
                 const lB = parseFloat(waterLastB.value);
                 const cB = parseFloat(waterCurrentB.value);
-                const price = parseFloat(waterPrice.value);
                 let valid = true;
-                if (isNaN(lA) || lA < 0) {waterErrorLastA.style.display = 'block'; valid = false;}
-                if (isNaN(cA) || cA < 0) {waterErrorCurrentA.style.display = 'block'; valid = false;}
-                if (isNaN(lB) || lB < 0) {waterErrorLastB.style.display = 'block'; valid = false;}
-                if (isNaN(cB) || cB < 0) {waterErrorCurrentB.style.display = 'block'; valid = false;}
-                if (!isNaN(cA) && !isNaN(lA) && cA < lA) {
-                    waterErrorCurrentA.textContent = '本次读数不能小于上次读数';
-                    waterErrorCurrentA.style.display = 'block'; valid = false;
+
+                if (hasA) {
+                    if (isNaN(lA) || lA < 0) {waterErrorLastA.style.display = 'block'; valid = false;}
+                    if (isNaN(cA) || cA < 0) {waterErrorCurrentA.style.display = 'block'; valid = false;}
+                    if (!isNaN(cA) && !isNaN(lA) && cA < lA) {
+                        waterErrorCurrentA.textContent = '本次读数不能小于上次读数';
+                        waterErrorCurrentA.style.display = 'block'; valid = false;
+                    }
                 }
-                if (!isNaN(cB) && !isNaN(lB) && cB < lB) {
-                    waterErrorCurrentB.textContent = '本次读数不能小于上次读数';
-                    waterErrorCurrentB.style.display = 'block'; valid = false;
+                if (hasB) {
+                    if (isNaN(lB) || lB < 0) {waterErrorLastB.style.display = 'block'; valid = false;}
+                    if (isNaN(cB) || cB < 0) {waterErrorCurrentB.style.display = 'block'; valid = false;}
+                    if (!isNaN(cB) && !isNaN(lB) && cB < lB) {
+                        waterErrorCurrentB.textContent = '本次读数不能小于上次读数';
+                        waterErrorCurrentB.style.display = 'block'; valid = false;
+                    }
+                }
+                if (!hasA && !hasB) {
+                    waterErrorCurrentA.textContent = '请至少填写一户的用水数据';
+                    waterErrorCurrentA.style.display = 'block';
+                    valid = false;
                 }
                 if (isNaN(price) || price <= 0) {waterErrorPrice.style.display = 'block'; valid = false;}
                 if (!valid || !periodOk) return;
 
-                const usageA = cA - lA;
-                const usageB = cB - lB;
+                const usageA = hasA ? cA - lA : 0;
+                const usageB = hasB ? cB - lB : 0;
                 if (usageA + usageB <= 0) {
-                    waterErrorCurrentA.textContent = '总用水量不能为零';
-                    waterErrorCurrentA.style.display = 'block';
-                    waterErrorCurrentB.textContent = '总用水量不能为零';
-                    waterErrorCurrentB.style.display = 'block';
+                    if (hasA) {
+                        waterErrorCurrentA.textContent = '总用水量不能为零';
+                        waterErrorCurrentA.style.display = 'block';
+                    }
+                    if (hasB) {
+                        waterErrorCurrentB.textContent = '总用水量不能为零';
+                        waterErrorCurrentB.style.display = 'block';
+                    }
                     return;
                 }
                 const billA = Math.round(usageA * price * 100) / 100;
                 const billB = Math.round(usageB * price * 100) / 100;
-                waterUsageAResult.textContent = usageA.toFixed(2) + ' 吨';
-                waterBillA.textContent = billA.toFixed(2) + ' 元';
-                waterUsageBResult.textContent = usageB.toFixed(2) + ' 吨';
-                waterBillB.textContent = billB.toFixed(2) + ' 元';
+                waterUsageAResult.textContent = hasA ? usageA.toFixed(2) + ' 吨' : '未填写';
+                waterBillA.textContent = hasA ? billA.toFixed(2) + ' 元' : '—';
+                waterUsageBResult.textContent = hasB ? usageB.toFixed(2) + ' 吨' : '未填写';
+                waterBillB.textContent = hasB ? billB.toFixed(2) + ' 元' : '—';
 
-                const periodText = formatPeriod();
+                const periodText = formatPeriod('water');
                 if (periodText) {
                     waterPeriodDisplay.textContent = periodText;
                     waterPeriodDisplay.style.display = 'inline-block';
@@ -1488,12 +1565,13 @@
                     nameB: nicknameBInput.value.trim() || '住户B',
                     rawNameA: nicknameAInput.value,
                     rawNameB: nicknameBInput.value,
-                    periodStartVal: periodStart.value,
-                    periodEndVal: periodEnd.value,
+                    periodStartVal: waterPeriodStart.value,
+                    periodEndVal: waterPeriodEnd.value,
                     billA: billA, billB: billB,
                     usageA: usageA, usageB: usageB,
+                    filledA: hasA, filledB: hasB,
                     price: price,
-                    period: periodPlainText(),
+                    period: periodPlainText('water'),
                     water: {
                         lastA: waterLastA.value, currentA: waterCurrentA.value,
                         lastB: waterLastB.value, currentB: waterCurrentB.value
@@ -1701,13 +1779,21 @@
                     const isWater = item.type === 'water';
                     let bodyRows = '';
                     if (isWater) {
+                        const filledA = r.filledA !== false;  // 旧记录无此标记，视为已填写
+                        const filledB = r.filledB !== false;
                         bodyRows =
                             '<div><span class="hb-name">' + escapeHtml(r.nameA || '住户A') + '：</span>' +
-                            '<span class="hb-amount">¥' + num(r.billA).toFixed(2) + '</span>' +
-                            '<span class="hb-usage">(' + num(r.usageA).toFixed(2) + ' 吨)</span></div>' +
+                            (filledA
+                                ? '<span class="hb-amount">¥' + num(r.billA).toFixed(2) + '</span>' +
+                                  '<span class="hb-usage">(' + num(r.usageA).toFixed(2) + ' 吨)</span>'
+                                : '<span class="hb-usage">未填写</span>') +
+                            '</div>' +
                             '<div><span class="hb-name">' + escapeHtml(r.nameB || '住户B') + '：</span>' +
-                            '<span class="hb-amount">¥' + num(r.billB).toFixed(2) + '</span>' +
-                            '<span class="hb-usage">(' + num(r.usageB).toFixed(2) + ' 吨)</span></div>' +
+                            (filledB
+                                ? '<span class="hb-amount">¥' + num(r.billB).toFixed(2) + '</span>' +
+                                  '<span class="hb-usage">(' + num(r.usageB).toFixed(2) + ' 吨)</span>'
+                                : '<span class="hb-usage">未填写</span>') +
+                            '</div>' +
                             '<div class="hb-extra">单价 ' + num(r.price).toFixed(2) + ' 元/吨</div>';
                     } else {
                         bodyRows =
@@ -1802,19 +1888,22 @@
             /* 回填历史条目 */
             function applyHistoryEntry(item) {
                 const src = item.input || {};
+                const p = periods[item.type];  // 按费用类型回填到对应的周期输入框
                 // 优先使用保存时的原始输入值（新版记录）；旧记录走兼容逻辑
                 if (src.rawNameA !== undefined) nicknameAInput.value = src.rawNameA;
                 else if (src.nameA !== undefined) nicknameAInput.value = src.nameA === '住户A' ? '' : src.nameA;
                 if (src.rawNameB !== undefined) nicknameBInput.value = src.rawNameB;
                 else if (src.nameB !== undefined) nicknameBInput.value = src.nameB === '住户B' ? '' : src.nameB;
-                if (src.periodStartVal !== undefined || src.periodEndVal !== undefined) {
-                    periodStart.value = src.periodStartVal || '';
-                    periodEnd.value = src.periodEndVal || '';
-                } else if (src.period && src.period !== '未设置周期') {
-                    const parts = src.period.split(' ~ ');
-                    if (parts.length === 2) {
-                        periodStart.value = parts[0];
-                        periodEnd.value = parts[1];
+                if (p) {
+                    if (src.periodStartVal !== undefined || src.periodEndVal !== undefined) {
+                        p.start.value = src.periodStartVal || '';
+                        p.end.value = src.periodEndVal || '';
+                    } else if (src.period && src.period !== '未设置周期') {
+                        const parts = src.period.split(' ~ ');
+                        if (parts.length === 2) {
+                            p.start.value = parts[0];
+                            p.end.value = parts[1];
+                        }
                     }
                 }
 
@@ -1825,7 +1914,7 @@
                     currentReadingB.value = src.electricity.currentB || '';
                     feeList.innerHTML = '';
                     (src.electricity.fees || [{op: '+', amount: ''}]).forEach(function (f) {
-                        feeList.appendChild(createFeeItem(f.op, f.amount));
+                        feeList.appendChild(createFeeItem(f.op, f.amount, f.note));
                     });
                     updateTotalBill();
                     updateUsageDisplay();
@@ -1851,15 +1940,18 @@
                 feeList.querySelectorAll('.fee-item').forEach(function (item) {
                     fees.push({
                         op: item.querySelector('.fee-op').value,
-                        amount: item.querySelector('.fee-amount').value
+                        amount: item.querySelector('.fee-amount').value,
+                        note: item.querySelector('.fee-note').value
                     });
                 });
                 return {
                     updatedAt: Date.now(),
                     nicknameA: nicknameAInput.value,
                     nicknameB: nicknameBInput.value,
-                    periodStart: periodStart.value,
-                    periodEnd: periodEnd.value,
+                    elecPeriodStart: elecPeriodStart.value,
+                    elecPeriodEnd: elecPeriodEnd.value,
+                    waterPeriodStart: waterPeriodStart.value,
+                    waterPeriodEnd: waterPeriodEnd.value,
                     waterPrice: waterPrice.value,
                     electricity: {
                         lastA: lastReadingA.value, currentA: currentReadingA.value,
@@ -1885,8 +1977,10 @@
                     if (!skipInputs) {
                         nicknameAInput.value = typeof d.nicknameA === 'string' ? d.nicknameA : '';
                         nicknameBInput.value = typeof d.nicknameB === 'string' ? d.nicknameB : '';
-                        if (typeof d.periodStart === 'string' && d.periodStart) periodStart.value = d.periodStart;
-                        if (typeof d.periodEnd === 'string' && d.periodEnd) periodEnd.value = d.periodEnd;
+                        if (typeof d.elecPeriodStart === 'string' && d.elecPeriodStart) elecPeriodStart.value = d.elecPeriodStart;
+                        if (typeof d.elecPeriodEnd === 'string' && d.elecPeriodEnd) elecPeriodEnd.value = d.elecPeriodEnd;
+                        if (typeof d.waterPeriodStart === 'string' && d.waterPeriodStart) waterPeriodStart.value = d.waterPeriodStart;
+                        if (typeof d.waterPeriodEnd === 'string' && d.waterPeriodEnd) waterPeriodEnd.value = d.waterPeriodEnd;
                         waterPrice.value = d.waterPrice != null ? String(d.waterPrice) : '';
                         if (d.electricity && typeof d.electricity === 'object') {
                             lastReadingA.value = d.electricity.lastA || '';
@@ -1897,7 +1991,8 @@
                             const fees = Array.isArray(d.electricity.fees) && d.electricity.fees.length
                                 ? d.electricity.fees : [{op: '+', amount: ''}];
                             fees.forEach(function (f) {
-                                feeList.appendChild(createFeeItem(f && f.op === '-' ? '-' : '+', f ? f.amount : ''));
+                                feeList.appendChild(createFeeItem(f && f.op === '-' ? '-' : '+',
+                                    f ? f.amount : '', f ? f.note : ''));
                             });
                         }
                         if (d.water && typeof d.water === 'object') {
@@ -1916,9 +2011,11 @@
                         updateTotalBill();
                         updateUsageDisplay();
                         updateWaterUsageDisplay();
-                        validatePeriod();
+                        validatePeriod('electricity');
+                        validatePeriod('water');
 
-                        // 自动填充：把上次历史的本次抄表数填入"上次抄表数"
+                        // 自动填充：把上次历史的本次抄表数填入"上次抄表数"，
+                        // 并把对应费用种类最近一条历史的结束日期填入周期开始日期
                         autoFillFromLastHistory();
                     }
                 } catch (e) {
@@ -1926,7 +2023,19 @@
                 }
             }
 
-            /* 自动填充上次抄表数 */
+            /* 取历史记录的计费周期结束日期（兼容新旧记录格式） */
+            function historyPeriodEnd(item) {
+                if (!item) return '';
+                if (item.input && item.input.periodEndVal) return item.input.periodEndVal;
+                const p = item.period || '';
+                if (p.indexOf(' ~ ') > 0) return p.split(' ~ ')[1] || '';
+                if (p.indexOf('截至 ') === 0) return p.slice(3).trim();
+                return '';
+            }
+
+            /* 自动填充：抄表数取对应费用种类最近一条历史的"本次抄表数"，
+               周期开始日期取对应费用种类最近一条历史的"结束日期"。
+               仅在对应输入框为空时填充，不覆盖用户已输入的内容 */
             function autoFillFromLastHistory() {
                 // 找最近一条电费历史
                 const lastElec = localHistory.find(function (it) {return it.type === 'electricity';});
@@ -1939,6 +2048,10 @@
                     if (!lastReadingB.value && lastElec.result.usageB !== undefined) {
                         const lastCurrentB = lastElec.input && lastElec.input.electricity ? lastElec.input.electricity.currentB : '';
                         if (lastCurrentB) lastReadingB.value = lastCurrentB;
+                    }
+                    if (!elecPeriodStart.value) {
+                        const end = historyPeriodEnd(lastElec);
+                        if (end) elecPeriodStart.value = end;
                     }
                     updateUsageDisplay();
                 }
@@ -1956,6 +2069,10 @@
                     }
                     if (!waterPrice.value && lastWater.result.price) {
                         waterPrice.value = lastWater.result.price;
+                    }
+                    if (!waterPeriodStart.value) {
+                        const end = historyPeriodEnd(lastWater);
+                        if (end) waterPeriodStart.value = end;
                     }
                     updateWaterUsageDisplay();
                 }
@@ -2201,6 +2318,13 @@
             });
 
             adminLogoutBtn.addEventListener('click', function () {
+                // 通知服务端使当前会话失效（单点登录）
+                if (adminToken) {
+                    fetch(API_BASE + '/api/admin/logout', {
+                        method: 'POST',
+                        headers: {'Authorization': 'Bearer ' + adminToken}
+                    }).catch(function () { });
+                }
                 adminToken = '';
                 localStorage.removeItem('admin_token');
                 adminLoginCard.style.display = 'block';
@@ -2219,6 +2343,7 @@
                         localStorage.removeItem('admin_token');
                         adminLoginCard.style.display = 'block';
                         adminPanelContent.style.display = 'none';
+                        showAdminStatus(adminLoginStatus, '⚠️ 登录已失效（可能已在其他设备登录），请重新登录', 'warn');
                         return;
                     }
                     const data = await res.json();
