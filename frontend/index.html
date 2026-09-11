@@ -647,36 +647,107 @@
         .history-body {
             font-size: 14px;
             color: #2c3e50;
-            line-height: 1.8;
+            line-height: 1.6;
             padding-bottom: 10px;
             border-bottom: 1px dashed #ecf0f1;
             margin-bottom: 10px;
         }
 
+        /* 每个住户一个独立信息块，边界清晰 */
+        .history-body .hb-person {
+            background: #f8f9fb;
+            border: 1px solid #eef1f4;
+            border-radius: 6px;
+            padding: 8px 10px;
+            margin-bottom: 8px;
+        }
+
+        .history-body .hb-person-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 8px;
+        }
+
         .history-body .hb-name {
-            color: #7f8c8d;
-            margin-right: 6px;
+            color: #2c3e50;
+            font-weight: 600;
         }
 
         .history-body .hb-amount {
             font-weight: 600;
             color: #27ae60;
+            white-space: nowrap;
         }
 
         .history-item.type-water .hb-amount {
             color: #16a085;
         }
 
-        .history-body .hb-usage {
+        .history-body .hb-unfilled {
             color: #95a5a6;
-            font-size: 12px;
-            margin-left: 6px;
+            font-size: 13px;
         }
 
-        .history-body .hb-extra {
+        .history-body .hb-detail {
             font-size: 12px;
             color: #7f8c8d;
-            margin-top: 4px;
+            margin-top: 3px;
+        }
+
+        /* 汇总行（总电费/总用电量、水费单价） */
+        .history-body .hb-summary {
+            font-size: 12px;
+            color: #7f8c8d;
+            border-top: 1px solid #eef1f4;
+            padding-top: 8px;
+            margin-top: 2px;
+        }
+
+        /* 费用明细区 */
+        .history-body .hb-fees {
+            border-top: 1px dashed #e0e4e8;
+            margin-top: 8px;
+            padding-top: 8px;
+        }
+
+        .history-body .hb-fees-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #95a5a6;
+            margin-bottom: 4px;
+        }
+
+        .history-body .hb-fee-row {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            font-size: 13px;
+            padding: 2px 0;
+        }
+
+        .history-body .hb-fee-op {
+            font-weight: 600;
+            width: 16px;
+            flex: none;
+            text-align: center;
+        }
+
+        .history-body .hb-fee-op.plus { color: #27ae60; }
+        .history-body .hb-fee-op.minus { color: #e74c3c; }
+
+        .history-body .hb-fee-amount {
+            color: #2c3e50;
+            white-space: nowrap;
+        }
+
+        .history-body .hb-fee-note {
+            font-size: 12px;
+            color: #7f8c8d;
+            background: #f0f2f5;
+            border-radius: 4px;
+            padding: 1px 6px;
+            word-break: break-all;
         }
 
         .history-actions {
@@ -1835,6 +1906,34 @@
                 return escapeHtml(l) + ' → ' + escapeHtml(c);
             }
 
+            /* 单个住户信息块：标题行（昵称 + 金额）+ 若干明细行 */
+            function hbPerson(nameHtml, amountHtml, detailLines) {
+                return '<div class="hb-person">' +
+                    '<div class="hb-person-head"><span class="hb-name">' + nameHtml + '</span>' +
+                    (amountHtml || '') + '</div>' +
+                    (detailLines || []).filter(Boolean).map(function (l) {
+                        return '<div class="hb-detail">' + l + '</div>';
+                    }).join('') +
+                    '</div>';
+            }
+
+            /* 电费费用明细区（含每项备注） */
+            function hbFees(fees) {
+                if (!Array.isArray(fees)) return '';
+                const rows = fees.filter(function (f) {
+                    return f && String(f.amount !== undefined && f.amount !== null ? f.amount : '') !== '';
+                }).map(function (f) {
+                    const minus = f.op === '-';
+                    return '<div class="hb-fee-row">' +
+                        '<span class="hb-fee-op ' + (minus ? 'minus' : 'plus') + '">' + (minus ? '－' : '＋') + '</span>' +
+                        '<span class="hb-fee-amount">' + escapeHtml(String(f.amount)) + ' 元</span>' +
+                        (f.note ? '<span class="hb-fee-note">' + escapeHtml(f.note) + '</span>' : '') +
+                        '</div>';
+                });
+                if (!rows.length) return '';
+                return '<div class="hb-fees"><div class="hb-fees-title">费用明细</div>' + rows.join('') + '</div>';
+            }
+
             function renderHistory() {
                 const list = document.getElementById('historyList');
                 if (!localHistory.length) {
@@ -1844,51 +1943,41 @@
                 list.innerHTML = localHistory.map(function (item) {
                     const r = item.result || item.input || {};
                     const isWater = item.type === 'water';
+                    const nameAHtml = escapeHtml(r.nameA || '住户A');
+                    const nameBHtml = escapeHtml(r.nameB || '住户B');
                     let bodyRows = '';
                     if (isWater) {
                         const filledA = r.filledA !== false;  // 旧记录无此标记，视为已填写
                         const filledB = r.filledB !== false;
-                        bodyRows =
-                            '<div><span class="hb-name">' + escapeHtml(r.nameA || '住户A') + '：</span>' +
-                            (filledA
-                                ? '<span class="hb-amount">¥' + num(r.billA).toFixed(2) + '</span>' +
-                                  '<span class="hb-usage">(' + num(r.usageA).toFixed(2) + ' 吨)</span>'
-                                : '<span class="hb-usage">未填写</span>') +
-                            '</div>' +
-                            '<div><span class="hb-name">' + escapeHtml(r.nameB || '住户B') + '：</span>' +
-                            (filledB
-                                ? '<span class="hb-amount">¥' + num(r.billB).toFixed(2) + '</span>' +
-                                  '<span class="hb-usage">(' + num(r.usageB).toFixed(2) + ' 吨)</span>'
-                                : '<span class="hb-usage">未填写</span>') +
-                            '</div>' +
-                            '<div class="hb-extra">单价 ' + num(r.price).toFixed(2) + ' 元/吨</div>';
-                        // 具体抄表读数（水表）
                         const wi = (item.input && item.input.water) || null;
-                        if (wi) {
-                            const parts = [];
-                            if (filledA) parts.push(escapeHtml(r.nameA || '住户A') + ' ' + meterPair(wi.lastA, wi.currentA));
-                            if (filledB) parts.push(escapeHtml(r.nameB || '住户B') + ' ' + meterPair(wi.lastB, wi.currentB));
-                            if (parts.length) bodyRows += '<div class="hb-extra">📟 抄表：' + parts.join(' · ') + '</div>';
-                        }
-                    } else {
                         bodyRows =
-                            '<div><span class="hb-name">' + escapeHtml(r.nameA || '住户A') + '：</span>' +
-                            '<span class="hb-amount">¥' + num(r.billA).toFixed(2) + '</span>' +
-                            '<span class="hb-usage">(' + num(r.usageA).toFixed(2) + ' kWh · ' +
-                            (num(r.ratioA) * 100).toFixed(1) + '%)</span></div>' +
-                            '<div><span class="hb-name">' + escapeHtml(r.nameB || '住户B') + '：</span>' +
-                            '<span class="hb-amount">¥' + num(r.billB).toFixed(2) + '</span>' +
-                            '<span class="hb-usage">(' + num(r.usageB).toFixed(2) + ' kWh · ' +
-                            (num(r.ratioB) * 100).toFixed(1) + '%)</span></div>' +
-                            '<div class="hb-extra">总电费 ¥' + num(r.totalBill).toFixed(2) +
-                            ' · 总用电量 ' + num(r.totalUsage).toFixed(2) + ' kWh</div>';
-                        // 具体抄表读数（电表）
+                            hbPerson(nameAHtml,
+                                filledA ? '<span class="hb-amount">¥' + num(r.billA).toFixed(2) + '</span>' : '',
+                                filledA
+                                    ? ['用水量 ' + num(r.usageA).toFixed(2) + ' 吨',
+                                       wi ? '📟 抄表 ' + meterPair(wi.lastA, wi.currentA) : null]
+                                    : ['<span class="hb-unfilled">未填写</span>']) +
+                            hbPerson(nameBHtml,
+                                filledB ? '<span class="hb-amount">¥' + num(r.billB).toFixed(2) + '</span>' : '',
+                                filledB
+                                    ? ['用水量 ' + num(r.usageB).toFixed(2) + ' 吨',
+                                       wi ? '📟 抄表 ' + meterPair(wi.lastB, wi.currentB) : null]
+                                    : ['<span class="hb-unfilled">未填写</span>']) +
+                            '<div class="hb-summary">单价 ' + num(r.price).toFixed(2) + ' 元/吨</div>';
+                    } else {
                         const ei = (item.input && item.input.electricity) || null;
-                        if (ei) {
-                            bodyRows += '<div class="hb-extra">📟 抄表：' +
-                                escapeHtml(r.nameA || '住户A') + ' ' + meterPair(ei.lastA, ei.currentA) + ' · ' +
-                                escapeHtml(r.nameB || '住户B') + ' ' + meterPair(ei.lastB, ei.currentB) + '</div>';
-                        }
+                        bodyRows =
+                            hbPerson(nameAHtml,
+                                '<span class="hb-amount">¥' + num(r.billA).toFixed(2) + '</span>',
+                                ['用电量 ' + num(r.usageA).toFixed(2) + ' kWh · 占比 ' + (num(r.ratioA) * 100).toFixed(1) + '%',
+                                 ei ? '📟 抄表 ' + meterPair(ei.lastA, ei.currentA) : null]) +
+                            hbPerson(nameBHtml,
+                                '<span class="hb-amount">¥' + num(r.billB).toFixed(2) + '</span>',
+                                ['用电量 ' + num(r.usageB).toFixed(2) + ' kWh · 占比 ' + (num(r.ratioB) * 100).toFixed(1) + '%',
+                                 ei ? '📟 抄表 ' + meterPair(ei.lastB, ei.currentB) : null]) +
+                            '<div class="hb-summary">总电费 ¥' + num(r.totalBill).toFixed(2) +
+                            ' · 总用电量 ' + num(r.totalUsage).toFixed(2) + ' kWh</div>' +
+                            hbFees(ei && ei.fees);
                     }
                     return '<div class="history-item ' + (isWater ? 'type-water' : '') + '" data-id="' + escapeHtml(item.id) + '">' +
                         '<div class="history-header">' +
@@ -1977,16 +2066,10 @@
                 if (src.rawNameB !== undefined) nicknameBInput.value = src.rawNameB;
                 else if (src.nameB !== undefined) nicknameBInput.value = src.nameB === '住户B' ? '' : src.nameB;
                 if (p) {
-                    if (src.periodStartVal !== undefined || src.periodEndVal !== undefined) {
-                        p.start.value = src.periodStartVal || '';
-                        p.end.value = src.periodEndVal || '';
-                    } else if (src.period && src.period !== '未设置周期') {
-                        const parts = src.period.split(' ~ ');
-                        if (parts.length === 2) {
-                            p.start.value = parts[0];
-                            p.end.value = parts[1];
-                        }
-                    }
+                    // 日期回填：将该条历史的"结束日期"填入当前周期的"开始日期"
+                    // （新一期账单从上一期截止日开始）；"结束日期"保持当前值不动
+                    const end = historyPeriodEnd(item);
+                    if (end) p.start.value = end;
                 }
 
                 if (item.type === 'electricity' && src.electricity) {
@@ -2064,20 +2147,11 @@
                         if (typeof d.waterPeriodStart === 'string' && d.waterPeriodStart) waterPeriodStart.value = d.waterPeriodStart;
                         if (typeof d.waterPeriodEnd === 'string' && d.waterPeriodEnd) waterPeriodEnd.value = d.waterPeriodEnd;
                         waterPrice.value = d.waterPrice != null ? String(d.waterPrice) : '';
-                        if (d.electricity && typeof d.electricity === 'object') {
-                            // 注意：抄表读数（lastA/currentA/lastB/currentB）刻意不从房间数据恢复。
-                            // "上次抄表数"由 autoFillFromLastHistory 按最近一条历史的"本次抄表数"填充，
-                            // "本次抄表数"属于未保存的临时输入——保存后刷新页面不应回填，否则会把
-                            // 上一次账单的读数残留到本次输入位置（曾因此产生重复回填的 bug）。
-                            feeList.innerHTML = '';
-                            const fees = Array.isArray(d.electricity.fees) && d.electricity.fees.length
-                                ? d.electricity.fees : [{op: '+', amount: ''}];
-                            fees.forEach(function (f) {
-                                feeList.appendChild(createFeeItem(f && f.op === '-' ? '-' : '+',
-                                    f ? f.amount : '', f ? f.note : ''));
-                            });
-                        }
-                        // 水表读数同理不从房间数据恢复
+                        // 注意：以下内容刻意不从房间数据恢复——
+                        // 1) 抄表读数："上次抄表数"由 autoFillFromLastHistory 按最近一条历史的
+                        //    "本次抄表数"填充，"本次抄表数"是未保存的临时输入，刷新后不应回填
+                        //    （曾因此产生上次/本次被同时回填的 bug）；
+                        // 2) 电费费用项：每个账期的费用明细不同，需手动填写或从历史记录"回填"。
                     }
                     localHistory = mergeHistory(localHistory,
                         Array.isArray(d.history) ? d.history : [], d.deletedIds);
