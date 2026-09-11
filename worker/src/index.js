@@ -39,22 +39,28 @@ function bearerToken(request) {
   return auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
 }
 
-/* token 格式：<签发时间戳>.<sha256('admin_token:'+密码+':'+时间戳)>，7 天有效 */
-async function makeAdminToken(password) {
+/* token 格式：<签发时间戳>.<会话ID>.<签名>，7 天有效；
+   会话ID 存于 KV，新登录会覆盖旧会话 → 管理员单点登录 */
+async function makeAdminToken(env, password) {
   const ts = Date.now();
-  const sig = await sha256('admin_token:' + password + ':' + ts);
-  return ts + '.' + sig;
+  const session = crypto.randomUUID();
+  const sig = await sha256('admin_token:' + password + ':' + ts + ':' + session);
+  await env.ROOMS.put('admin:session', session);
+  return ts + '.' + session + '.' + sig;
 }
 
 async function checkAdmin(request, env) {
   const token = bearerToken(request);
   if (!token || !env.ADMIN_PASSWORD) return false;
-  const dot = token.indexOf('.');
-  if (dot <= 0) return false;
-  const ts = Number(token.slice(0, dot));
+  const parts = token.split('.');
+  if (parts.length !== 3) return false;
+  const ts = Number(parts[0]);
   if (!Number.isFinite(ts) || Math.abs(Date.now() - ts) > TOKEN_TTL_MS) return false;
-  const expected = await sha256('admin_token:' + env.ADMIN_PASSWORD + ':' + ts);
-  return token.slice(dot + 1) === expected;
+  const expected = await sha256('admin_token:' + env.ADMIN_PASSWORD + ':' + parts[0] + ':' + parts[1]);
+  if (parts[2] !== expected) return false;
+  // 单点登录：只有最新一次登录的会话有效
+  const currentSession = await env.ROOMS.get('admin:session');
+  return !!currentSession && currentSession === parts[1];
 }
 
 /* 基于 KV 的简单限流（最终一致性，防爆破够用，非精确计数） */
@@ -86,7 +92,8 @@ function sanitizeReadings(r, withFees) {
     if (Array.isArray(src.fees)) {
       out.fees = src.fees.slice(0, 50).map(f => ({
         op: (f && f.op === '-') ? '-' : '+',
-        amount: str(f && f.amount, 20)
+        amount: str(f && f.amount, 20),
+        note: str(f && f.note, 50)
       }));
     }
   }
@@ -117,8 +124,13 @@ function sanitizeRoomData(data) {
     updatedAt: Number.isFinite(data.updatedAt) ? data.updatedAt : Date.now(),
     nicknameA: str(data.nicknameA, 50),
     nicknameB: str(data.nicknameB, 50),
+    // 电费/水费计费周期相互独立（periodStart/periodEnd 为旧版字段，保留兼容）
     periodStart: str(data.periodStart, 20),
     periodEnd: str(data.periodEnd, 20),
+    elecPeriodStart: str(data.elecPeriodStart, 20),
+    elecPeriodEnd: str(data.elecPeriodEnd, 20),
+    waterPeriodStart: str(data.waterPeriodStart, 20),
+    waterPeriodEnd: str(data.waterPeriodEnd, 20),
     waterPrice: str(data.waterPrice, 20),
     electricity: sanitizeReadings(data.electricity, true),
     water: sanitizeReadings(data.water, false),
@@ -157,11 +169,19 @@ export default {
         const { password } = await request.json();
         if (!env.ADMIN_PASSWORD) return json({ error: '服务器未配置 ADMIN_PASSWORD' }, 500);
         if (password !== env.ADMIN_PASSWORD) return json({ error: '密码错误' }, 401);
-        const token = await makeAdminToken(password);
+        const token = await makeAdminToken(env, password);
         return json({ token });
       } catch {
         return json({ error: '请求格式错误' }, 400);
       }
+    }
+
+    /* ---------- 管理员退出登录（使当前会话失效） ---------- */
+    if (path === '/api/admin/logout' && request.method === 'POST') {
+      if (await checkAdmin(request, env)) {
+        await env.ROOMS.delete('admin:session');
+      }
+      return json({ ok: true });
     }
 
     /* ---------- 管理员房间管理 ---------- */
