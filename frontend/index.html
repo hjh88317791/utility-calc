@@ -2142,16 +2142,16 @@
                     if (!skipInputs) {
                         nicknameAInput.value = typeof d.nicknameA === 'string' ? d.nicknameA : '';
                         nicknameBInput.value = typeof d.nicknameB === 'string' ? d.nicknameB : '';
-                        if (typeof d.elecPeriodStart === 'string' && d.elecPeriodStart) elecPeriodStart.value = d.elecPeriodStart;
-                        if (typeof d.elecPeriodEnd === 'string' && d.elecPeriodEnd) elecPeriodEnd.value = d.elecPeriodEnd;
-                        if (typeof d.waterPeriodStart === 'string' && d.waterPeriodStart) waterPeriodStart.value = d.waterPeriodStart;
-                        if (typeof d.waterPeriodEnd === 'string' && d.waterPeriodEnd) waterPeriodEnd.value = d.waterPeriodEnd;
                         waterPrice.value = d.waterPrice != null ? String(d.waterPrice) : '';
                         // 注意：以下内容刻意不从房间数据恢复——
                         // 1) 抄表读数："上次抄表数"由 autoFillFromLastHistory 按最近一条历史的
                         //    "本次抄表数"填充，"本次抄表数"是未保存的临时输入，刷新后不应回填
                         //    （曾因此产生上次/本次被同时回填的 bug）；
-                        // 2) 电费费用项：每个账期的费用明细不同，需手动填写或从历史记录"回填"。
+                        // 2) 电费费用项：每个账期的费用明细不同，需手动填写或从历史记录"回填"；
+                        // 3) 计费周期：房间数据里存的是上次保存时的旧周期，若原样恢复会把
+                        //    "两个日期回填到原位"。"开始日期"应由 autoFillFromLastHistory 取
+                        //    最近一条同类历史的"结束日期"（新账期从上一期截止日开始），
+                        //    "结束日期"保持默认值今天。
                     }
                     localHistory = mergeHistory(localHistory,
                         Array.isArray(d.history) ? d.history : [], d.deletedIds);
