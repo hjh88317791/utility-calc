@@ -1088,6 +1088,8 @@
             let pendingWaterResult = null;
 
             let localHistory = [];
+            let deletedIds = [];    // 删除墓碑：保证"删除/清空"能同步给其他客户端
+            let isDirty = false;    // 本地有未保存修改时，轮询不覆盖输入框
 
             /* ============================================================
                Tab 切换
@@ -1133,6 +1135,14 @@
             }
             nicknameAInput.addEventListener('input', updateNames);
             nicknameBInput.addEventListener('input', updateNames);
+
+            // 用户在任何数据输入框中编辑时标记"本地有未保存修改"
+            // （程序赋值不会触发 input 事件，因此同步远端数据不会误标）
+            document.querySelector('.container').addEventListener('input', function (e) {
+                if (e.target.closest('#admin-panel')) return;
+                if (e.target.id === 'roomCode') return;
+                isDirty = true;
+            });
 
             /* ============================================================
                基础设置 - 计费周期
@@ -1311,8 +1321,11 @@
                 }
                 const ratioA = usageA / totalUsage;
                 const ratioB = usageB / totalUsage;
-                billAElement.textContent = (totalBill * ratioA).toFixed(2) + ' 元';
-                billBElement.textContent = (totalBill * ratioB).toFixed(2) + ' 元';
+                // 舍入处理：A 四舍五入到分，B = 总额 − A，保证两户之和恒等于总电费
+                const billAYuan = Math.round(totalBill * ratioA * 100) / 100;
+                const billBYuan = Math.round((totalBill - billAYuan) * 100) / 100;
+                billAElement.textContent = billAYuan.toFixed(2) + ' 元';
+                billBElement.textContent = billBYuan.toFixed(2) + ' 元';
                 totalBillResult.textContent = totalBill.toFixed(2) + ' 元';
                 totalUsageElement.textContent = totalUsage.toFixed(2) + ' kWh';
                 ratioAElement.textContent = (ratioA * 100).toFixed(2) + '%';
@@ -1334,8 +1347,12 @@
                     type: 'electricity',
                     nameA: nicknameAInput.value.trim() || '住户A',
                     nameB: nicknameBInput.value.trim() || '住户B',
-                    billA: totalBill * ratioA,
-                    billB: totalBill * ratioB,
+                    rawNameA: nicknameAInput.value,
+                    rawNameB: nicknameBInput.value,
+                    periodStartVal: periodStart.value,
+                    periodEndVal: periodEnd.value,
+                    billA: billAYuan,
+                    billB: billBYuan,
                     usageA: usageA, usageB: usageB,
                     ratioA: ratioA, ratioB: ratioB,
                     totalBill: totalBill, totalUsage: totalUsage,
@@ -1447,8 +1464,8 @@
                     waterErrorCurrentB.style.display = 'block';
                     return;
                 }
-                const billA = usageA * price;
-                const billB = usageB * price;
+                const billA = Math.round(usageA * price * 100) / 100;
+                const billB = Math.round(usageB * price * 100) / 100;
                 waterUsageAResult.textContent = usageA.toFixed(2) + ' 吨';
                 waterBillA.textContent = billA.toFixed(2) + ' 元';
                 waterUsageBResult.textContent = usageB.toFixed(2) + ' 吨';
@@ -1469,6 +1486,10 @@
                     type: 'water',
                     nameA: nicknameAInput.value.trim() || '住户A',
                     nameB: nicknameBInput.value.trim() || '住户B',
+                    rawNameA: nicknameAInput.value,
+                    rawNameB: nicknameBInput.value,
+                    periodStartVal: periodStart.value,
+                    periodEndVal: periodEnd.value,
                     billA: billA, billB: billB,
                     usageA: usageA, usageB: usageB,
                     price: price,
@@ -1528,6 +1549,17 @@
                 localHistory.unshift(entry);
                 if (localHistory.length > 200) localHistory.length = 200;
                 renderHistory();
+                saveLocalCache();
+
+                // 保存前先拉取远端并合并历史，降低并发保存互相覆盖丢数据的概率
+                try {
+                    const remote = await fetchRoomData();
+                    if (remote && remote.exists) {
+                        localHistory = mergeHistory(localHistory, remote.history, remote.deletedIds);
+                        saveLocalCache();
+                        renderHistory();
+                    }
+                } catch (e) { /* 拉取失败不阻断保存 */ }
 
                 // 合并到房间数据推送
                 const roomData = buildRoomData();
@@ -1554,6 +1586,8 @@
 
                 if (success) {
                     lastRemoteTs = roomData.updatedAt;
+                    isDirty = false;
+                    saveLocalCache();
                     setSaveProgress(progressEl, 'success', '✅ 保存成功！输入框即将清空...');
                     setTimeout(function () {
                         clearFn();
@@ -1602,10 +1636,32 @@
             /* ============================================================
                历史记录
                ============================================================ */
-            function mergeHistory(local, remote) {
+            /* 本地缓存：按房间隔离，避免换房间后历史互相污染 */
+            function saveLocalCache() {
+                if (!currentRoom) return;
+                try {
+                    localStorage.setItem('utility_calc_history_' + currentRoom,
+                        JSON.stringify({ history: localHistory, deletedIds: deletedIds }));
+                } catch (e) { }
+            }
+            function loadLocalCache(room) {
+                try {
+                    const raw = localStorage.getItem('utility_calc_history_' + room);
+                    if (!raw) return;
+                    const d = JSON.parse(raw);
+                    if (d && Array.isArray(d.history)) localHistory = d.history;
+                    if (d && Array.isArray(d.deletedIds)) deletedIds = d.deletedIds;
+                } catch (e) { }
+            }
+
+            /* 合并历史：按 id 去重；deletedIds（墓碑）内的记录一律剔除，
+               使"删除/清空"能够传播到所有客户端而不会被合并复活 */
+            function mergeHistory(local, remote, remoteDeleted) {
+                const delSet = new Set([...(deletedIds || []), ...(remoteDeleted || [])]);
+                deletedIds = Array.from(delSet).slice(-400);
                 const map = new Map();
                 [...(remote || []), ...(local || [])].forEach(function (item) {
-                    if (item && item.id) map.set(item.id, item);
+                    if (item && item.id && !delSet.has(item.id)) map.set(item.id, item);
                 });
                 return Array.from(map.values())
                     .sort(function (a, b) {return b.timestamp - a.timestamp;})
@@ -1628,6 +1684,12 @@
                 });
             }
 
+            /* 数字兜底：远端数据不可信，防止损坏记录导致渲染崩溃 */
+            function num(v) {
+                const n = Number(v);
+                return isFinite(n) ? n : 0;
+            }
+
             function renderHistory() {
                 const list = document.getElementById('historyList');
                 if (!localHistory.length) {
@@ -1635,37 +1697,37 @@
                     return;
                 }
                 list.innerHTML = localHistory.map(function (item) {
-                    const r = item.result || item.input;
+                    const r = item.result || item.input || {};
                     const isWater = item.type === 'water';
                     let bodyRows = '';
                     if (isWater) {
                         bodyRows =
-                            '<div><span class="hb-name">' + escapeHtml(r.nameA) + '：</span>' +
-                            '<span class="hb-amount">¥' + r.billA.toFixed(2) + '</span>' +
-                            '<span class="hb-usage">(' + r.usageA.toFixed(2) + ' 吨)</span></div>' +
-                            '<div><span class="hb-name">' + escapeHtml(r.nameB) + '：</span>' +
-                            '<span class="hb-amount">¥' + r.billB.toFixed(2) + '</span>' +
-                            '<span class="hb-usage">(' + r.usageB.toFixed(2) + ' 吨)</span></div>' +
-                            '<div class="hb-extra">单价 ' + r.price.toFixed(2) + ' 元/吨</div>';
+                            '<div><span class="hb-name">' + escapeHtml(r.nameA || '住户A') + '：</span>' +
+                            '<span class="hb-amount">¥' + num(r.billA).toFixed(2) + '</span>' +
+                            '<span class="hb-usage">(' + num(r.usageA).toFixed(2) + ' 吨)</span></div>' +
+                            '<div><span class="hb-name">' + escapeHtml(r.nameB || '住户B') + '：</span>' +
+                            '<span class="hb-amount">¥' + num(r.billB).toFixed(2) + '</span>' +
+                            '<span class="hb-usage">(' + num(r.usageB).toFixed(2) + ' 吨)</span></div>' +
+                            '<div class="hb-extra">单价 ' + num(r.price).toFixed(2) + ' 元/吨</div>';
                     } else {
                         bodyRows =
-                            '<div><span class="hb-name">' + escapeHtml(r.nameA) + '：</span>' +
-                            '<span class="hb-amount">¥' + r.billA.toFixed(2) + '</span>' +
-                            '<span class="hb-usage">(' + r.usageA.toFixed(2) + ' kWh · ' +
-                            (r.ratioA * 100).toFixed(1) + '%)</span></div>' +
-                            '<div><span class="hb-name">' + escapeHtml(r.nameB) + '：</span>' +
-                            '<span class="hb-amount">¥' + r.billB.toFixed(2) + '</span>' +
-                            '<span class="hb-usage">(' + r.usageB.toFixed(2) + ' kWh · ' +
-                            (r.ratioB * 100).toFixed(1) + '%)</span></div>' +
-                            '<div class="hb-extra">总电费 ¥' + r.totalBill.toFixed(2) +
-                            ' · 总用电量 ' + r.totalUsage.toFixed(2) + ' kWh</div>';
+                            '<div><span class="hb-name">' + escapeHtml(r.nameA || '住户A') + '：</span>' +
+                            '<span class="hb-amount">¥' + num(r.billA).toFixed(2) + '</span>' +
+                            '<span class="hb-usage">(' + num(r.usageA).toFixed(2) + ' kWh · ' +
+                            (num(r.ratioA) * 100).toFixed(1) + '%)</span></div>' +
+                            '<div><span class="hb-name">' + escapeHtml(r.nameB || '住户B') + '：</span>' +
+                            '<span class="hb-amount">¥' + num(r.billB).toFixed(2) + '</span>' +
+                            '<span class="hb-usage">(' + num(r.usageB).toFixed(2) + ' kWh · ' +
+                            (num(r.ratioB) * 100).toFixed(1) + '%)</span></div>' +
+                            '<div class="hb-extra">总电费 ¥' + num(r.totalBill).toFixed(2) +
+                            ' · 总用电量 ' + num(r.totalUsage).toFixed(2) + ' kWh</div>';
                     }
-                    return '<div class="history-item ' + (isWater ? 'type-water' : '') + '" data-id="' + item.id + '">' +
+                    return '<div class="history-item ' + (isWater ? 'type-water' : '') + '" data-id="' + escapeHtml(item.id) + '">' +
                         '<div class="history-header">' +
                         '<span class="history-type">' + (isWater ? '💧 水费' : '⚡ 电费') + '</span>' +
-                        '<span class="history-time">' + formatTime(item.timestamp) + '</span>' +
+                        '<span class="history-time">' + formatTime(num(item.timestamp)) + '</span>' +
                         '</div>' +
-                        '<div class="history-period">📅 ' + item.period + '</div>' +
+                        '<div class="history-period">📅 ' + escapeHtml(item.period || '') + '</div>' +
                         '<div class="history-body">' + bodyRows + '</div>' +
                         '<div class="history-actions">' +
                         '<button type="button" data-action="load">回填</button>' +
@@ -1685,14 +1747,19 @@
                 if (action === 'delete') {
                     if (!confirm('确定删除这条历史记录？（会同步给房间内所有人）')) return;
                     localHistory = localHistory.filter(function (it) {return it.id !== id;});
+                    // 写入墓碑，防止其他客户端合并时把这条记录复活
+                    deletedIds.push(id);
+                    if (deletedIds.length > 400) deletedIds = deletedIds.slice(-400);
                     renderHistory();
+                    saveLocalCache();
                     if (currentRoom) {
                         const roomData = buildRoomData();
                         fetch(API_BASE + '/api/room/' + currentRoom, {
                             method: 'PUT',
                             headers: {'Content-Type': 'application/json'},
                             body: JSON.stringify(roomData)
-                        }).catch(function () { });
+                        }).then(function () { lastRemoteTs = roomData.updatedAt; })
+                          .catch(function () { });
                     }
                 }
 
@@ -1703,27 +1770,47 @@
                 }
             });
 
-            document.getElementById('clearHistoryBtn').addEventListener('click', function () {
+            document.getElementById('clearHistoryBtn').addEventListener('click', async function () {
                 if (!localHistory.length) return;
                 if (!confirm('确定清空全部历史记录？（会同步给房间内所有人）')) return;
+                // 先拉取远端合并，尽量把所有已知记录都写入墓碑，减少其他客户端"复活"的概率
+                if (currentRoom) {
+                    try {
+                        const remote = await fetchRoomData();
+                        if (remote && remote.exists) {
+                            localHistory = mergeHistory(localHistory, remote.history, remote.deletedIds);
+                        }
+                    } catch (e) { }
+                }
+                const delSet = new Set(deletedIds);
+                localHistory.forEach(function (it) { if (it && it.id) delSet.add(it.id); });
+                deletedIds = Array.from(delSet).slice(-400);
                 localHistory = [];
                 renderHistory();
+                saveLocalCache();
                 if (currentRoom) {
                     const roomData = buildRoomData();
                     fetch(API_BASE + '/api/room/' + currentRoom, {
                         method: 'PUT',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify(roomData)
-                    }).catch(function () { });
+                    }).then(function () { lastRemoteTs = roomData.updatedAt; })
+                      .catch(function () { });
                 }
             });
 
             /* 回填历史条目 */
             function applyHistoryEntry(item) {
                 const src = item.input || {};
-                if (src.nameA !== undefined) nicknameAInput.value = src.nameA === '住户A' ? '' : src.nameA;
-                if (src.nameB !== undefined) nicknameBInput.value = src.nameB === '住户B' ? '' : src.nameB;
-                if (src.period && src.period !== '未设置周期') {
+                // 优先使用保存时的原始输入值（新版记录）；旧记录走兼容逻辑
+                if (src.rawNameA !== undefined) nicknameAInput.value = src.rawNameA;
+                else if (src.nameA !== undefined) nicknameAInput.value = src.nameA === '住户A' ? '' : src.nameA;
+                if (src.rawNameB !== undefined) nicknameBInput.value = src.rawNameB;
+                else if (src.nameB !== undefined) nicknameBInput.value = src.nameB === '住户B' ? '' : src.nameB;
+                if (src.periodStartVal !== undefined || src.periodEndVal !== undefined) {
+                    periodStart.value = src.periodStartVal || '';
+                    periodEnd.value = src.periodEndVal || '';
+                } else if (src.period && src.period !== '未设置周期') {
                     const parts = src.period.split(' ~ ');
                     if (parts.length === 2) {
                         periodStart.value = parts[0];
@@ -1783,43 +1870,60 @@
                         lastA: waterLastA.value, currentA: waterCurrentA.value,
                         lastB: waterLastB.value, currentB: waterCurrentB.value
                     },
-                    history: localHistory
+                    history: localHistory,
+                    deletedIds: deletedIds
                 };
             }
 
-            function applyRoomData(d) {
+            /* 应用远端数据。opts.skipInputs = true 时只合并历史，不覆盖输入框
+               （用于本地有未保存修改时的后台轮询） */
+            function applyRoomData(d, opts) {
                 if (!d) return;
-                nicknameAInput.value = d.nicknameA || '';
-                nicknameBInput.value = d.nicknameB || '';
-                if (d.periodStart) periodStart.value = d.periodStart;
-                if (d.periodEnd) periodEnd.value = d.periodEnd;
-                waterPrice.value = d.waterPrice || '';
-                if (d.electricity) {
-                    lastReadingA.value = d.electricity.lastA || '';
-                    currentReadingA.value = d.electricity.currentA || '';
-                    lastReadingB.value = d.electricity.lastB || '';
-                    currentReadingB.value = d.electricity.currentB || '';
-                    feeList.innerHTML = '';
-                    (d.electricity.fees || [{op: '+', amount: ''}]).forEach(function (f) {
-                        feeList.appendChild(createFeeItem(f.op, f.amount));
-                    });
-                }
-                if (d.water) {
-                    waterLastA.value = d.water.lastA || '';
-                    waterCurrentA.value = d.water.currentA || '';
-                    waterLastB.value = d.water.lastB || '';
-                    waterCurrentB.value = d.water.currentB || '';
-                }
-                localHistory = mergeHistory(localHistory, d.history);
-                renderHistory();
-                updateNames();
-                updateTotalBill();
-                updateUsageDisplay();
-                updateWaterUsageDisplay();
-                validatePeriod();
+                opts = opts || {};
+                const skipInputs = !!opts.skipInputs;
+                try {
+                    if (!skipInputs) {
+                        nicknameAInput.value = typeof d.nicknameA === 'string' ? d.nicknameA : '';
+                        nicknameBInput.value = typeof d.nicknameB === 'string' ? d.nicknameB : '';
+                        if (typeof d.periodStart === 'string' && d.periodStart) periodStart.value = d.periodStart;
+                        if (typeof d.periodEnd === 'string' && d.periodEnd) periodEnd.value = d.periodEnd;
+                        waterPrice.value = d.waterPrice != null ? String(d.waterPrice) : '';
+                        if (d.electricity && typeof d.electricity === 'object') {
+                            lastReadingA.value = d.electricity.lastA || '';
+                            currentReadingA.value = d.electricity.currentA || '';
+                            lastReadingB.value = d.electricity.lastB || '';
+                            currentReadingB.value = d.electricity.currentB || '';
+                            feeList.innerHTML = '';
+                            const fees = Array.isArray(d.electricity.fees) && d.electricity.fees.length
+                                ? d.electricity.fees : [{op: '+', amount: ''}];
+                            fees.forEach(function (f) {
+                                feeList.appendChild(createFeeItem(f && f.op === '-' ? '-' : '+', f ? f.amount : ''));
+                            });
+                        }
+                        if (d.water && typeof d.water === 'object') {
+                            waterLastA.value = d.water.lastA || '';
+                            waterCurrentA.value = d.water.currentA || '';
+                            waterLastB.value = d.water.lastB || '';
+                            waterCurrentB.value = d.water.currentB || '';
+                        }
+                    }
+                    localHistory = mergeHistory(localHistory,
+                        Array.isArray(d.history) ? d.history : [], d.deletedIds);
+                    saveLocalCache();
+                    renderHistory();
+                    if (!skipInputs) {
+                        updateNames();
+                        updateTotalBill();
+                        updateUsageDisplay();
+                        updateWaterUsageDisplay();
+                        validatePeriod();
 
-                // 自动填充：把上次历史的本次抄表数填入"上次抄表数"
-                autoFillFromLastHistory();
+                        // 自动填充：把上次历史的本次抄表数填入"上次抄表数"
+                        autoFillFromLastHistory();
+                    }
+                } catch (e) {
+                    console.error('应用远端数据失败：', e);
+                }
             }
 
             /* 自动填充上次抄表数 */
@@ -1892,10 +1996,33 @@
             function dequeuePending(room) {
                 setPendingQueue(getPendingQueue().filter(function (item) {return item.room !== room;}));
             }
+
+            /* 统一的房间数据拉取 */
+            async function fetchRoomData(room) {
+                const res = await fetch(API_BASE + '/api/room/' + (room || currentRoom) + '?t=' + Date.now());
+                return res.json();
+            }
+
             async function flushPendingQueue() {
                 const q = getPendingQueue();
                 for (const item of q) {
                     try {
+                        // 重传前先拉远端合并历史，避免陈旧快照整包覆盖他人新保存的数据
+                        try {
+                            const remote = await fetchRoomData(item.room);
+                            if (remote && remote.exists && item.data) {
+                                const delSet = new Set([...(item.data.deletedIds || []), ...(remote.deletedIds || [])]);
+                                const map = new Map();
+                                [...(remote.history || []), ...(item.data.history || [])].forEach(function (it) {
+                                    if (it && it.id && !delSet.has(it.id)) map.set(it.id, it);
+                                });
+                                item.data.history = Array.from(map.values())
+                                    .sort(function (a, b) {return b.timestamp - a.timestamp;})
+                                    .slice(0, 200);
+                                item.data.deletedIds = Array.from(delSet).slice(-400);
+                                item.data.updatedAt = Date.now();
+                            }
+                        } catch (e) { }
                         await fetch(API_BASE + '/api/room/' + item.room, {
                             method: 'PUT',
                             headers: {'Content-Type': 'application/json'},
@@ -1910,8 +2037,7 @@
                 if (!currentRoom) return;
                 if (retries === undefined) retries = 3;
                 try {
-                    const res = await fetch(API_BASE + '/api/room/' + currentRoom + '?t=' + Date.now());
-                    const data = await res.json();
+                    const data = await fetchRoomData();
                     if (!data.exists) {
                         if (retries > 0) {
                             setSyncStatus('🔄 正在等待远端数据同步...（剩余 ' + retries + '）');
@@ -1923,8 +2049,14 @@
                     }
                     if (data.updatedAt && data.updatedAt > lastRemoteTs) {
                         lastRemoteTs = data.updatedAt;
-                        applyRoomData(data);
-                        setSyncStatus('✅ 已同步（' + new Date(data.updatedAt).toLocaleTimeString() + '）', 'ok');
+                        if (isDirty) {
+                            // 本地有未保存修改：只合并历史，不覆盖输入框
+                            applyRoomData(data, {skipInputs: true});
+                            setSyncStatus('⚠️ 远端有新数据，但您有未保存的修改，已保留当前输入', 'warn');
+                        } else {
+                            applyRoomData(data);
+                            setSyncStatus('✅ 已同步（' + new Date(data.updatedAt).toLocaleTimeString() + '）', 'ok');
+                        }
                     } else {
                         setSyncStatus('✅ 已同步', 'ok');
                     }
@@ -1938,58 +2070,73 @@
                     setSyncStatus('⚠️ 房间码需 4~16 位字母或数字', 'err');
                     return false;
                 }
+                // 切换到新房间：重置状态，并按房间加载隔离的本地缓存
+                localHistory = [];
+                deletedIds = [];
+                lastRemoteTs = 0;
+                isDirty = false;
                 currentRoom = code;
+                loadLocalCache(code);
+                renderHistory();
                 localStorage.setItem('utility_calc_room', code);
                 currentRoomDisplay.textContent = code;
                 setSyncStatus('正在连接...');
 
-                // 尝试拉取远端数据（最多重试 3 次）
-                const ok = await new Promise(function (resolve) {
-                    let tries = 3;
-                    (function tryPull() {
-                        fetch(API_BASE + '/api/room/' + currentRoom + '?t=' + Date.now())
-                            .then(function (r) {return r.json();})
-                            .then(function (data) {
-                                if (data.exists) {
-                                    lastRemoteTs = data.updatedAt || 0;
-                                    applyRoomData(data);
-                                    resolve(true);
-                                } else if (tries > 0) {
-                                    tries--;
-                                    setSyncStatus('🔄 正在等待房间数据...（剩余 ' + tries + '）');
-                                    setTimeout(tryPull, 1500);
-                                } else {
-                                    setSyncStatus('❌ ' + (data.message || '房间不存在或未开放'), 'err');
-                                    resolve(false);
-                                }
-                            })
-                            .catch(function (e) {
-                                setSyncStatus('❌ 连接失败：' + e.message, 'err');
-                                resolve(false);
-                            });
-                    })();
-                });
+                // 尝试拉取远端数据（最多重试 3 次，应对 KV 最终一致性）
+                let ok = false;
+                for (let tries = 3; tries >= 0; tries--) {
+                    try {
+                        const data = await fetchRoomData();
+                        if (data.exists) {
+                            lastRemoteTs = data.updatedAt || 0;
+                            applyRoomData(data);
+                            ok = true;
+                            break;
+                        }
+                        if (tries > 0) {
+                            setSyncStatus('🔄 正在等待房间数据...（剩余 ' + tries + '）');
+                            await new Promise(function (r) {setTimeout(r, 1500);});
+                        } else {
+                            setSyncStatus('❌ ' + (data.message || '房间不存在或未开放'), 'err');
+                        }
+                    } catch (e) {
+                        setSyncStatus('❌ 连接失败：' + e.message, 'err');
+                        break;
+                    }
+                }
 
                 if (!ok) {
                     currentRoom = '';
+                    localHistory = [];
+                    deletedIds = [];
+                    renderHistory();
                     localStorage.removeItem('utility_calc_room');
                     return false;
                 }
 
-                // 尝试重传待发送数据
+                // 尝试重传待发送数据，完成后重新拉取一次与远端合并
                 await flushPendingQueue();
+                await pullFromServer(0);
 
                 setSyncStatus('✅ 已进入房间', 'ok');
                 roomEntry.style.display = 'none';
                 roomActive.style.display = 'block';
 
                 clearInterval(pollTimer);
-                pollTimer = setInterval(function () {pullFromServer(0);}, SYNC_INTERVAL);
+                // 标签页不可见时暂停轮询，节省 KV 读取配额
+                pollTimer = setInterval(function () {
+                    if (!document.hidden) pullFromServer(0);
+                }, SYNC_INTERVAL);
                 return true;
             }
 
             function leaveRoom() {
                 currentRoom = '';
+                localHistory = [];
+                deletedIds = [];
+                lastRemoteTs = 0;
+                isDirty = false;
+                renderHistory();
                 localStorage.removeItem('utility_calc_room');
                 clearInterval(pollTimer);
                 pollTimer = null;

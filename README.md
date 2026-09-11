@@ -79,7 +79,7 @@ cd utility-calc
 
 ### 第三步：配置 `worker/wrangler.toml`
 
-把 KV 的 ID 填入：
+仓库中的 `wrangler.toml` 使用 `${KV_ID}` 占位符，KV ID 不直接入库：
 
 ```toml
 name = "utility-calc-api"
@@ -88,8 +88,11 @@ compatibility_date = "2024-01-01"
 
 [[kv_namespaces]]
 binding = "ROOMS"
-id = "替换为你刚才复制的 KV ID"
+id = "${KV_ID}"
 ```
+
+- **用 GitHub Actions 部署**：无需改动此文件，KV ID 通过 GitHub Secrets 注入（见第四步）
+- **本地手动部署**：把 `${KV_ID}` 临时替换为真实 KV ID，或设置环境变量 `KV_ID` 后再执行 `wrangler deploy`
 
 ### 第四步：部署 Worker
 
@@ -98,10 +101,12 @@ id = "替换为你刚才复制的 KV ID"
 1. 生成 Cloudflare API Token：
    - 头像 → **My Profile** → **API Tokens** → **Create Token**
    - 使用模板 **Edit Cloudflare Workers**
-2. 把 Token 加到 GitHub 仓库的 Secrets：
+2. 把以下 3 个 Secrets 加到 GitHub 仓库（**缺一不可**）：
    - 仓库 → **Settings** → **Secrets and variables** → **Actions**
-   - 新增 `CLOUDFLARE_API_TOKEN`，值粘贴刚才的 Token
-3. push 代码后，GitHub Actions 会自动部署 Worker
+   - `CLOUDFLARE_API_TOKEN`：刚才生成的 Token
+   - `CLOUDFLARE_ACCOUNT_ID`：Cloudflare Dashboard 右侧栏的 Account ID
+   - `KV_ID`：第二步创建的 KV 命名空间 ID
+3. push 代码后，GitHub Actions 会自动注入 KV ID 并部署 Worker
 
 **方式 B：本地手动部署**
 
@@ -182,12 +187,22 @@ const API_BASE = 'https://utility-calc-api.你的子域.workers.dev';
 
 | 场景 | 处理方式 |
 |------|---------|
-| 输入变化 | 暂存本地，**不自动推送** |
-| 点击“保存本次记录” | 主动 PUT 到 Worker，带重试（最多 3 次） |
+| 输入变化 | 暂存本地，**不自动推送**；本地有未保存修改时，轮询不会覆盖输入框 |
+| 点击“保存本次记录” | 先拉取远端合并历史，再主动 PUT 到 Worker，带重试（最多 3 次） |
 | 进入房间 | GET 拉取，遇到“不存在”自动重试（应对 KV 最终一致性） |
-| 同步轮询 | 加入房间后每 5 秒 GET 一次 |
-| 保存失败 | 数据进待重传队列，下次进入房间自动 flush |
+| 同步轮询 | 加入房间后每 5 秒 GET 一次；**标签页不可见时暂停轮询**以节省 KV 配额 |
+| 保存失败 | 数据进待重传队列，下次进入房间自动 flush（重传前先与远端合并） |
 | 历史合并 | 按 `id` 去重，按时间倒序，最多保留 200 条 |
+| 历史删除/清空 | 通过 `deletedIds` 墓碑机制同步给所有客户端，删除的记录不会被合并复活 |
+| 历史本地缓存 | **按房间隔离**存储，退出/切换房间不会互相污染 |
+| 电费分摊舍入 | A 户四舍五入到分，B 户 = 总额 − A，保证两户之和恒等于总电费 |
+
+### 安全设计
+
+- **管理员 token**：`时间戳.签名` 格式，7 天过期，改密码即全部失效；登录接口按 IP 限流（10 次/5 分钟）
+- **房间数据写入**：Worker 对 PUT 数据做结构白名单校验 + 512KB 大小限制，防止垃圾数据注入
+- **前端渲染**：所有远端数据渲染前转义 + 数字类型兜底，防止存储型 XSS 和损坏数据导致页面崩溃
+- **注意事项**：房间数据读写对持有房间码的人开放（设计上房间码即准入凭证），请勿在昵称/备注中填写敏感信息
 
 ### 为什么用 Cloudflare KV 而不是数据库？
 

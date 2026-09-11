@@ -19,14 +19,13 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./worker
-        run: npm install
+        run: npm ci
 
       - name: Inject KV ID into wrangler.toml
         working-directory: ./worker
         run: |
           sed -i "s|\${KV_ID}|${{ secrets.KV_ID }}|g" wrangler.toml
-          echo "=== wrangler.toml after inject ==="
-          cat wrangler.toml
+          grep -c 'kv_namespaces' wrangler.toml
 
       - name: Deploy Worker
         uses: cloudflare/wrangler-action@v3
