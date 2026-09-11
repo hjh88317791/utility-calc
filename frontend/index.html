@@ -174,6 +174,17 @@
             background: #fff;
         }
 
+        /* 数字输入框：去掉上下增减箭头（Chrome/Safari/Edge/Firefox） */
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type="number"] {
+            -moz-appearance: textfield;
+            appearance: textfield;
+        }
+
         /* iOS Safari/微信：日期输入框有较大的固有最小宽度，需显式允许收缩 */
         input[type="date"] {
             min-width: 0;
@@ -834,9 +845,9 @@
             </div>
         </div>
 
-        <!-- 基础设置 -->
+        <!-- 住户设置 -->
         <div class="card settings-card">
-            <h2>⚙️ 基础设置</h2>
+            <h2>👥 住户设置</h2>
 
             <div class="settings-section">
                 <div class="settings-section-title">住户昵称</div>
@@ -851,8 +862,13 @@
                     </div>
                 </div>
             </div>
+        </div>
 
-            <div class="settings-section">
+        <!-- 计费周期设置：电费 Tab 只显示电费周期，水费 Tab 只显示水费周期 -->
+        <div class="card settings-card" id="periodCard">
+            <h2>📅 计费周期设置</h2>
+
+            <div class="settings-section" id="elecPeriodSection">
                 <div class="settings-section-title">⚡ 电费计费周期</div>
                 <div class="input-row">
                     <div class="input-group">
@@ -867,7 +883,7 @@
                 <div class="error" id="errorElecPeriod">结束日期不能早于开始日期</div>
             </div>
 
-            <div class="settings-section">
+            <div class="settings-section" id="waterPeriodSection" style="display: none;">
                 <div class="settings-section-title">💧 水费计费周期</div>
                 <div class="input-row">
                     <div class="input-group">
@@ -1140,12 +1156,33 @@
                 history: document.getElementById('history-panel'),
                 admin: document.getElementById('admin-panel')
             };
+            /* 计费周期卡片：电费 Tab 只显示电费周期，水费 Tab 只显示水费周期，
+               历史/管理 Tab 隐藏整个周期卡片 */
+            const periodCard = document.getElementById('periodCard');
+            const elecPeriodSection = document.getElementById('elecPeriodSection');
+            const waterPeriodSection = document.getElementById('waterPeriodSection');
+            function updatePeriodCard(tabName) {
+                if (tabName === 'electricity') {
+                    periodCard.style.display = '';
+                    elecPeriodSection.style.display = '';
+                    waterPeriodSection.style.display = 'none';
+                } else if (tabName === 'water') {
+                    periodCard.style.display = '';
+                    elecPeriodSection.style.display = 'none';
+                    waterPeriodSection.style.display = '';
+                } else {
+                    periodCard.style.display = 'none';
+                }
+            }
+            updatePeriodCard('electricity');
+
             tabs.forEach(function (tab) {
                 tab.addEventListener('click', function () {
                     tabs.forEach(function (t) {t.classList.remove('active');});
                     tab.classList.add('active');
                     Object.keys(panels).forEach(function (k) {panels[k].classList.remove('active');});
                     panels[tab.dataset.tab].classList.add('active');
+                    updatePeriodCard(tab.dataset.tab);
 
                     if (tab.dataset.tab === 'admin') {
                         if (adminToken) {
@@ -1175,6 +1212,24 @@
             nicknameAInput.addEventListener('input', updateNames);
             nicknameBInput.addEventListener('input', updateNames);
 
+            /* 昵称按房间独立持久化：输入时缓存到本地，
+               进入房间时若远端/历史都没有昵称则用它恢复 */
+            function saveNicknameCache() {
+                if (!currentRoom) return;
+                try {
+                    localStorage.setItem('utility_calc_nick_' + currentRoom,
+                        JSON.stringify({a: nicknameAInput.value, b: nicknameBInput.value}));
+                } catch (e) { }
+            }
+            function loadNicknameCache() {
+                if (!currentRoom) return null;
+                try {
+                    return JSON.parse(localStorage.getItem('utility_calc_nick_' + currentRoom) || 'null');
+                } catch (e) {return null;}
+            }
+            nicknameAInput.addEventListener('input', saveNicknameCache);
+            nicknameBInput.addEventListener('input', saveNicknameCache);
+
             // 用户在任何数据输入框中编辑时标记"本地有未保存修改"
             // （程序赋值不会触发 input 事件，因此同步远端数据不会误标）
             document.querySelector('.container').addEventListener('input', function (e) {
@@ -1183,8 +1238,13 @@
                 isDirty = true;
             });
 
+            // 禁止滚轮改变数字输入框的值（避免滚动页面时误改抄表数）
+            document.addEventListener('wheel', function (e) {
+                if (e.target && e.target.type === 'number') e.preventDefault();
+            }, {passive: false});
+
             /* ============================================================
-               基础设置 - 计费周期（电费/水费相互独立）
+               计费周期设置（电费/水费相互独立，按 Tab 显示对应周期）
                ============================================================ */
             const elecPeriodStart = document.getElementById('elecPeriodStart');
             const elecPeriodEnd = document.getElementById('elecPeriodEnd');
@@ -1768,6 +1828,13 @@
                 return isFinite(n) ? n : 0;
             }
 
+            /* 抄表读数展示：last → current；值为空显示 "—" */
+            function meterPair(last, current) {
+                const l = (last !== undefined && last !== null && String(last) !== '') ? String(last) : '—';
+                const c = (current !== undefined && current !== null && String(current) !== '') ? String(current) : '—';
+                return escapeHtml(l) + ' → ' + escapeHtml(c);
+            }
+
             function renderHistory() {
                 const list = document.getElementById('historyList');
                 if (!localHistory.length) {
@@ -1795,6 +1862,14 @@
                                 : '<span class="hb-usage">未填写</span>') +
                             '</div>' +
                             '<div class="hb-extra">单价 ' + num(r.price).toFixed(2) + ' 元/吨</div>';
+                        // 具体抄表读数（水表）
+                        const wi = (item.input && item.input.water) || null;
+                        if (wi) {
+                            const parts = [];
+                            if (filledA) parts.push(escapeHtml(r.nameA || '住户A') + ' ' + meterPair(wi.lastA, wi.currentA));
+                            if (filledB) parts.push(escapeHtml(r.nameB || '住户B') + ' ' + meterPair(wi.lastB, wi.currentB));
+                            if (parts.length) bodyRows += '<div class="hb-extra">📟 抄表：' + parts.join(' · ') + '</div>';
+                        }
                     } else {
                         bodyRows =
                             '<div><span class="hb-name">' + escapeHtml(r.nameA || '住户A') + '：</span>' +
@@ -1807,6 +1882,13 @@
                             (num(r.ratioB) * 100).toFixed(1) + '%)</span></div>' +
                             '<div class="hb-extra">总电费 ¥' + num(r.totalBill).toFixed(2) +
                             ' · 总用电量 ' + num(r.totalUsage).toFixed(2) + ' kWh</div>';
+                        // 具体抄表读数（电表）
+                        const ei = (item.input && item.input.electricity) || null;
+                        if (ei) {
+                            bodyRows += '<div class="hb-extra">📟 抄表：' +
+                                escapeHtml(r.nameA || '住户A') + ' ' + meterPair(ei.lastA, ei.currentA) + ' · ' +
+                                escapeHtml(r.nameB || '住户B') + ' ' + meterPair(ei.lastB, ei.currentB) + '</div>';
+                        }
                     }
                     return '<div class="history-item ' + (isWater ? 'type-water' : '') + '" data-id="' + escapeHtml(item.id) + '">' +
                         '<div class="history-header">' +
@@ -1983,10 +2065,10 @@
                         if (typeof d.waterPeriodEnd === 'string' && d.waterPeriodEnd) waterPeriodEnd.value = d.waterPeriodEnd;
                         waterPrice.value = d.waterPrice != null ? String(d.waterPrice) : '';
                         if (d.electricity && typeof d.electricity === 'object') {
-                            lastReadingA.value = d.electricity.lastA || '';
-                            currentReadingA.value = d.electricity.currentA || '';
-                            lastReadingB.value = d.electricity.lastB || '';
-                            currentReadingB.value = d.electricity.currentB || '';
+                            // 注意：抄表读数（lastA/currentA/lastB/currentB）刻意不从房间数据恢复。
+                            // "上次抄表数"由 autoFillFromLastHistory 按最近一条历史的"本次抄表数"填充，
+                            // "本次抄表数"属于未保存的临时输入——保存后刷新页面不应回填，否则会把
+                            // 上一次账单的读数残留到本次输入位置（曾因此产生重复回填的 bug）。
                             feeList.innerHTML = '';
                             const fees = Array.isArray(d.electricity.fees) && d.electricity.fees.length
                                 ? d.electricity.fees : [{op: '+', amount: ''}];
@@ -1995,12 +2077,7 @@
                                     f ? f.amount : '', f ? f.note : ''));
                             });
                         }
-                        if (d.water && typeof d.water === 'object') {
-                            waterLastA.value = d.water.lastA || '';
-                            waterCurrentA.value = d.water.currentA || '';
-                            waterLastB.value = d.water.lastB || '';
-                            waterCurrentB.value = d.water.currentB || '';
-                        }
+                        // 水表读数同理不从房间数据恢复
                     }
                     localHistory = mergeHistory(localHistory,
                         Array.isArray(d.history) ? d.history : [], d.deletedIds);
@@ -2034,9 +2111,30 @@
             }
 
             /* 自动填充：抄表数取对应费用种类最近一条历史的"本次抄表数"，
-               周期开始日期取对应费用种类最近一条历史的"结束日期"。
+               周期开始日期取对应费用种类最近一条历史的"结束日期"，
+               昵称取本房间缓存或最近一条历史的昵称快照。
                仅在对应输入框为空时填充，不覆盖用户已输入的内容 */
             function autoFillFromLastHistory() {
+                // 昵称：优先本房间昵称缓存，其次最近一条历史记录的昵称快照
+                if (!nicknameAInput.value || !nicknameBInput.value) {
+                    const cached = loadNicknameCache();
+                    if (!nicknameAInput.value && cached && cached.a) nicknameAInput.value = cached.a;
+                    if (!nicknameBInput.value && cached && cached.b) nicknameBInput.value = cached.b;
+                    const latest = localHistory[0];
+                    if (latest && latest.result) {
+                        const lr = latest.result;
+                        // rawNameA/rawNameB 是保存时的原始输入快照（新记录）；
+                        // 旧记录回退到 nameA/nameB（默认昵称"住户A/B"视为未设置）
+                        const snapA = lr.rawNameA !== undefined ? lr.rawNameA
+                            : (lr.nameA && lr.nameA !== '住户A' ? lr.nameA : '');
+                        const snapB = lr.rawNameB !== undefined ? lr.rawNameB
+                            : (lr.nameB && lr.nameB !== '住户B' ? lr.nameB : '');
+                        if (!nicknameAInput.value && snapA) nicknameAInput.value = snapA;
+                        if (!nicknameBInput.value && snapB) nicknameBInput.value = snapB;
+                    }
+                    updateNames();
+                }
+
                 // 找最近一条电费历史
                 const lastElec = localHistory.find(function (it) {return it.type === 'electricity';});
                 if (lastElec && lastElec.result) {
