@@ -1204,6 +1204,7 @@
                ============================================================ */
             const API_BASE = 'https://utility-calc-api.jasonchrishan0211.workers.dev';
             const SYNC_INTERVAL = 5000;
+            const ROOM_REQUEST_TIMEOUT = 8000;
 
             let currentRoom = '';
             let adminToken = localStorage.getItem('admin_token') || '';
@@ -2286,40 +2287,53 @@
                 setPendingQueue(getPendingQueue().filter(function (item) {return item.room !== room;}));
             }
 
-            /* 统一的房间数据拉取 */
-            async function fetchRoomData(room) {
-                const res = await fetch(API_BASE + '/api/room/' + (room || currentRoom) + '?t=' + Date.now());
-                return res.json();
+            async function requestRoomData(room, options) {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), ROOM_REQUEST_TIMEOUT);
+                try {
+                    const res = await fetch(API_BASE + '/api/room/' + room + '?t=' + Date.now(), {
+                        ...options,
+                        signal: controller.signal
+                    });
+                    if (!res.ok) throw new Error('服务器返回 HTTP ' + res.status);
+                    return await res.json();
+                } catch (e) {
+                    if (controller.signal.aborted) throw new Error('请求超时，请检查网络后重试');
+                    throw e;
+                } finally {
+                    clearTimeout(timeout);
+                }
             }
 
-            async function flushPendingQueue() {
-                const q = getPendingQueue();
-                for (const item of q) {
-                    try {
-                        // 重传前先拉远端合并历史，避免陈旧快照整包覆盖他人新保存的数据
-                        try {
-                            const remote = await fetchRoomData(item.room);
-                            if (remote && remote.exists && item.data) {
-                                const delSet = new Set([...(item.data.deletedIds || []), ...(remote.deletedIds || [])]);
-                                const map = new Map();
-                                [...(remote.history || []), ...(item.data.history || [])].forEach(function (it) {
-                                    if (it && it.id && !delSet.has(it.id)) map.set(it.id, it);
-                                });
-                                item.data.history = Array.from(map.values())
-                                    .sort(function (a, b) {return b.timestamp - a.timestamp;})
-                                    .slice(0, 200);
-                                item.data.deletedIds = Array.from(delSet).slice(-400);
-                                item.data.updatedAt = Date.now();
-                            }
-                        } catch (e) { }
-                        await fetch(API_BASE + '/api/room/' + item.room, {
-                            method: 'PUT',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify(item.data)
-                        });
-                        dequeuePending(item.room);
-                    } catch (e) { }
-                }
+            function fetchRoomData(room) {
+                return requestRoomData(room || currentRoom);
+            }
+
+            async function flushPendingRoom(room, remote) {
+                const item = getPendingQueue().find(entry => entry.room === room);
+                if (!item) return;
+
+                setSyncStatus('正在重传本地记录...');
+                const delSet = new Set([...(item.data.deletedIds || []), ...(remote.deletedIds || [])]);
+                const entries = new Map();
+                [...(remote.history || []), ...(item.data.history || [])].forEach(entry => {
+                    if (entry && entry.id && !delSet.has(entry.id)) entries.set(entry.id, entry);
+                });
+                const data = {
+                    ...item.data,
+                    history: Array.from(entries.values()).sort((a, b) => b.timestamp - a.timestamp).slice(0, 200),
+                    deletedIds: Array.from(delSet).slice(-400),
+                    updatedAt: Date.now()
+                };
+                const result = await requestRoomData(room, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                if (result?.ok !== true) throw new Error('服务器未确认保存');
+                setPendingQueue(getPendingQueue().filter(entry => entry.room !== room || entry.ts !== item.ts));
+                lastRemoteTs = data.updatedAt;
+                applyRoomData(data, {skipInputs: true});
             }
 
             async function pullFromServer(retries) {
@@ -2349,74 +2363,78 @@
                     } else {
                         setSyncStatus('✅ 已同步', 'ok');
                     }
+                    if (getPendingQueue().some(entry => entry.room === currentRoom)) {
+                        setSyncStatus('⚠️ 本地记录待重传，下次进入房间时会重试', 'warn');
+                    }
                 } catch (e) {
                     setSyncStatus('❌ 同步失败：' + e.message, 'err');
                 }
             }
 
             async function enterRoom(code) {
+                if (joinRoomBtn.disabled) return false;
                 if (!/^[A-Za-z0-9]{4,16}$/.test(code)) {
                     setSyncStatus('⚠️ 房间码需 4~16 位字母或数字', 'err');
                     return false;
                 }
-                // 切换到新房间：重置状态，并按房间加载隔离的本地缓存
-                localHistory = [];
-                deletedIds = [];
-                lastRemoteTs = 0;
-                isDirty = false;
-                currentRoom = code;
-                loadLocalCache(code);
-                renderHistory();
-                localStorage.setItem('utility_calc_room', code);
-                currentRoomDisplay.textContent = code;
-                setSyncStatus('正在连接...');
 
-                // 尝试拉取远端数据（最多重试 3 次，应对 KV 最终一致性）
-                let ok = false;
-                for (let tries = 3; tries >= 0; tries--) {
-                    try {
-                        const data = await fetchRoomData();
-                        if (data.exists) {
-                            lastRemoteTs = data.updatedAt || 0;
-                            applyRoomData(data);
-                            ok = true;
-                            break;
-                        }
-                        if (tries > 0) {
-                            setSyncStatus('🔄 正在等待房间数据...（剩余 ' + tries + '）');
-                            await new Promise(function (r) {setTimeout(r, 1500);});
-                        } else {
-                            setSyncStatus('❌ ' + (data.message || '房间不存在或未开放'), 'err');
-                        }
-                    } catch (e) {
-                        setSyncStatus('❌ 连接失败：' + e.message, 'err');
-                        break;
-                    }
-                }
-
-                if (!ok) {
-                    currentRoom = '';
+                joinRoomBtn.disabled = true;
+                try {
                     localHistory = [];
                     deletedIds = [];
+                    lastRemoteTs = 0;
+                    isDirty = false;
+                    currentRoom = code;
+                    loadLocalCache(code);
                     renderHistory();
-                    localStorage.removeItem('utility_calc_room');
-                    return false;
+                    localStorage.setItem('utility_calc_room', code);
+                    currentRoomDisplay.textContent = code;
+                    setSyncStatus('正在连接...');
+
+                    let data;
+                    try {
+                        // 刚创建的房间可能尚未同步到当前节点。
+                        for (let tries = 3; tries >= 0; tries--) {
+                            data = await fetchRoomData(code);
+                            if (data.exists || tries === 0) break;
+                            setSyncStatus('🔄 正在等待房间数据...（剩余 ' + tries + '）');
+                            await new Promise(resolve => setTimeout(resolve, 1500));
+                        }
+                    } catch (e) {
+                        data = undefined;
+                        setSyncStatus('❌ 连接失败：' + e.message, 'err');
+                    }
+
+                    if (!data?.exists) {
+                        if (data) setSyncStatus('❌ ' + (data.message || '房间不存在或未开放'), 'err');
+                        currentRoom = '';
+                        localHistory = [];
+                        deletedIds = [];
+                        renderHistory();
+                        localStorage.removeItem('utility_calc_room');
+                        return false;
+                    }
+
+                    lastRemoteTs = data.updatedAt || 0;
+                    applyRoomData(data);
+                    try {
+                        await flushPendingRoom(code, data);
+                        setSyncStatus('✅ 已进入房间', 'ok');
+                    } catch (e) {
+                        setSyncStatus('⚠️ 已进入房间，本地记录待重传', 'warn');
+                    }
+
+                    roomEntry.style.display = 'none';
+                    roomActive.style.display = 'block';
+                    clearInterval(pollTimer);
+                    // 标签页不可见时暂停轮询，节省 KV 读取配额
+                    pollTimer = setInterval(function () {
+                        if (!document.hidden) pullFromServer(0);
+                    }, SYNC_INTERVAL);
+                    return true;
+                } finally {
+                    joinRoomBtn.disabled = false;
                 }
-
-                // 尝试重传待发送数据，完成后重新拉取一次与远端合并
-                await flushPendingQueue();
-                await pullFromServer(0);
-
-                setSyncStatus('✅ 已进入房间', 'ok');
-                roomEntry.style.display = 'none';
-                roomActive.style.display = 'block';
-
-                clearInterval(pollTimer);
-                // 标签页不可见时暂停轮询，节省 KV 读取配额
-                pollTimer = setInterval(function () {
-                    if (!document.hidden) pullFromServer(0);
-                }, SYNC_INTERVAL);
-                return true;
             }
 
             function leaveRoom() {
