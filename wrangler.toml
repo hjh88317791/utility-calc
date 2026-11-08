@@ -1,0 +1,7 @@
+name = "utility-calc"
+pages_build_output_dir = "./frontend"
+compatibility_date = "2026-11-08"
+
+[[services]]
+binding = "UTILITY_API"
+service = "utility-calc-api"
