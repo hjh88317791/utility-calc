@@ -2,7 +2,7 @@
 
 一个用于合租/邻里间**电费、水费分摊计算**的轻量工具，支持多住户共享数据、管理员统一管理房间、历史记录留存。部署在 Cloudflare 全家桶上（Pages + Workers + KV）。
 
-- **前端**：纯静态 HTML + 原生 JavaScript，部署在 Cloudflare Pages
+- **前端**：静态 HTML + 原生 JavaScript，部署在 Cloudflare Pages。浏览器访问同域 `/api/`，由 Pages Functions 转发到 Worker。
 - **后端**：Cloudflare Workers（无服务器 API）
 - **存储**：Cloudflare KV（键值存储）
 - **无需服务器、无需备案、免费额度足够小工具使用**
@@ -137,15 +137,7 @@ npx wrangler deploy
    - **构建输出目录**：`frontend`
 4. 保存并部署，得到形如 `https://utility-calc.pages.dev` 的网址
 
-### 第七步：修改前端中的 API 地址
-
-打开 `frontend/index.html`，找到：
-
-```javascript
-const API_BASE = 'https://utility-calc-api.你的子域.workers.dev';
-```
-
-替换成第四步得到的真实 Worker 地址。改完 `git push`，Pages 会自动重新部署。
+`wrangler.toml` 中的 `UTILITY_API` 服务绑定负责把 `/api/` 请求转发给 `utility-calc-api`。如果部署到不同名称的 Pages 项目或 Worker，请相应修改 `name` 或 `service`。
 
 ---
 
@@ -216,10 +208,10 @@ const API_BASE = 'https://utility-calc-api.你的子域.workers.dev';
 
 ## ❓ 常见问题
 
-### Q1：访问 `workers.dev` 域名显示“无法访问此网站”
-国内网络环境可能屏蔽 `workers.dev` 子域。解决方案：
-- 绑定自定义域名：在 Worker 的 **设置** → **域和路由** → **添加自定义域**，填自己的域名
-- 或者改用 `pages.dev` 部署后端（Pages Functions），`pages.dev` 目前国内可访问
+### Q1：能打开页面，但无法连接房间
+
+- 确认打开的是 Pages 项目网址。浏览器通过同域 `/api/` 访问后端。
+- 如果自己部署，检查 Pages 项目的 `UTILITY_API` 服务绑定是否指向已部署的 Worker。
 
 ### Q2：加入房间时显示“房间不存在或未开放”
 - 检查房间码是否拼写正确（大小写无关）
@@ -227,7 +219,7 @@ const API_BASE = 'https://utility-calc-api.你的子域.workers.dev';
 - 刚创建的房间可能因 KV 延迟暂时读不到，等待 3~10 秒后重试
 
 ### Q3：保存时显示“保存中...”很久
-- 网络慢或者 `workers.dev` 被屏蔽，会触发 3 次重试
+- API 请求失败时会重试，最多尝试 3 次。
 - 失败后数据不会丢，会在下次进入房间时自动重传
 
 ### Q4：历史记录没有同步到邻居
